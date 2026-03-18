@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+client/node_modules/
+.pnp
+.pnp.js
+
+# Lock files (optional - uncomment if you want to ignore)
+# package-lock.json
+# client/package-lock.json
+
+# Utilities/Scripts (dev only)
+view-database.js
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database
+*.db
+*.sqlite
+messenger.db
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+debug_error.log
+
+# Build outputs
+/dist
+/build
+/public_build
+
+# User Uploads
+/uploads/*
+!/uploads/.gitkeep
+
+# SSL Certificates
+/ssl/*
+!/ssl/.gitkeep
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Testing
+/coverage
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

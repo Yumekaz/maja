@@ -1,0 +1,158 @@
+/**
+ * Socket.IO Setup
+ * Configures Socket.IO server and registers all handlers
+ */
+
+const db = require('../database/db');
+const logger = require('../utils/logger');
+const { authenticateSocket } = require('../middleware/auth');
+const authService = require('../services/authService');
+const createMessageHandler = require('./handlers/messageHandler');
+const createRoomHandler = require('./handlers/roomHandler');
+
+/**
+ * Shared state between socket handlers
+ */
+const state = {
+  users: new Map(),           // socketId -> { username, publicKey, id }
+  usernames: new Set(),       // Set of active usernames
+  userToSocket: new Map(),    // username -> socketId (for looking up owner by username)
+  rooms: new Map(),           // roomId -> room object
+  joinRequests: new Map(),    // requestId -> request object
+  socketToRooms: new Map(),   // socketId -> Set of roomIds
+  roomCounter: 0,
+  requestCounter: 0,
+};
+
+/**
+ * Setup Socket.IO handlers
+ */
+function setupSocketHandlers(io) {
+  // Authentication middleware
+  io.use(authenticateSocket);
+
+  io.on('connection', (socket) => {
+    logger.debug('Socket connected', { socketId: socket.id });
+
+    // Register user
+    socket.on('register', ({ username, publicKey }) => {
+      // Check if username is taken
+      if (state.usernames.has(username)) {
+        // Check if the previous owner is still connected (Zombie check)
+        const oldSocketId = state.userToSocket.get(username);
+        const oldSocket = oldSocketId ? io.sockets.sockets.get(oldSocketId) : null;
+
+        // Only reject if there's an ACTIVE different socket with this username
+        if (oldSocket && oldSocket.connected && oldSocket.id !== socket.id) {
+          socket.emit('username-taken');
+          logger.warn('Username already in use by active socket', {
+            username,
+            newSocketId: socket.id,
+            existingSocketId: oldSocketId
+          });
+          return;
+        }
+
+        // Clean up zombie session (old socket disconnected or doesn't exist)
+        if (oldSocketId && oldSocketId !== socket.id) {
+          logger.info('Cleaning up zombie session', { username, oldSocketId });
+          state.users.delete(oldSocketId);
+          state.socketToRooms.delete(oldSocketId);
+          state.usernames.delete(username);
+          state.userToSocket.delete(username);
+        }
+      }
+
+      // Get user ID from JWT if authenticated
+      const userId = socket.user?.userId || null;
+
+      // Store user info
+      state.users.set(socket.id, {
+        username,
+        publicKey,
+        id: userId
+      });
+      state.usernames.add(username);
+      state.userToSocket.set(username, socket.id);
+      state.socketToRooms.set(socket.id, new Set());
+
+      // Persist to database
+      if (userId) {
+        db.updateUserPublicKey(userId, publicKey);
+      } else {
+        db.upsertUser(username, publicKey);
+      }
+
+      socket.emit('registered', { username });
+      logger.info('User registered', { username, authenticated: !!userId });
+    });
+
+    /**
+     * Request a one-time upload token (valid for 5 mins)
+     * Allows legacy users to upload files via HTTP
+     */
+    socket.on('request-upload-token', () => {
+      const user = state.users.get(socket.id);
+      if (!user) {
+        socket.emit('error', { message: 'Not registered' });
+        return;
+      }
+
+      // Generate limited-scope token
+      const token = authService.generateLegacyUploadToken(user.username);
+
+      socket.emit('upload-token', { token });
+      logger.debug('Issued legacy upload token', { username: user.username });
+    });
+
+    // Setup handlers
+    createRoomHandler(io, socket, state);
+    createMessageHandler(io, socket, state);
+
+    // Handle disconnect
+    socket.on('disconnect', () => {
+      const user = state.users.get(socket.id);
+      if (!user) return;
+
+      // Leave all rooms
+      const userRooms = state.socketToRooms.get(socket.id) || new Set();
+      for (const roomId of userRooms) {
+        const room = state.rooms.get(roomId);
+        if (room) {
+          room.members.delete(user.username);
+          io.to(roomId).emit('member-left', { username: user.username });
+
+          const memberKeys = {};
+          room.members.forEach((key, name) => {
+            memberKeys[name] = key;
+          });
+
+          io.to(roomId).emit('members-update', {
+            members: Array.from(room.members.keys()),
+            memberKeys,
+          });
+
+          // Close room if owner disconnects
+          if (room.ownerSocketId === socket.id) {
+            state.rooms.delete(roomId);
+            db.deleteRoom(roomId);
+            io.to(roomId).emit('room-closed');
+            logger.info('Room closed (owner disconnect)', { roomId });
+          }
+        }
+      }
+
+      // Cleanup
+      state.users.delete(socket.id);
+      state.usernames.delete(user.username);
+      state.userToSocket.delete(user.username);
+      state.socketToRooms.delete(socket.id);
+
+      logger.info('User disconnected', { username: user.username });
+    });
+  });
+
+  logger.info('Socket.IO handlers initialized');
+}
+
+module.exports = setupSocketHandlers;
