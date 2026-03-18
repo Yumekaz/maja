@@ -11,7 +11,11 @@ import type {
   SystemMessage, 
   Message, 
   Attachment,
-  EncryptedMessage 
+  EncryptedMessage,
+  MemberJoinedPayload,
+  MemberLeftPayload,
+  MembersUpdatePayload,
+  RoomDataPayload,
 } from '../types';
 
 // Extended attachment type with encryption
@@ -88,7 +92,7 @@ function RoomPage({
     socket.emit('join-room', { roomId });
 
     // Handle room data
-    socket.on('room-data', async ({ members: roomMembers, memberKeys, encryptedMessages }) => {
+    socket.on('room-data', async ({ members: roomMembers, memberKeys, encryptedMessages }: RoomDataPayload) => {
       setMembers(roomMembers);
 
       // Update room key with all member keys
@@ -101,9 +105,8 @@ function RoomPage({
           
           // Preserve attachment metadata; decrypt on demand when the user downloads it.
           let decryptedAttachment: EncryptedAttachmentData | undefined;
-          if ((msg as any).attachment) {
-            const att = (msg as any).attachment as EncryptedAttachmentData;
-            decryptedAttachment = att;
+          if (msg.attachment) {
+            decryptedAttachment = msg.attachment as EncryptedAttachmentData;
           }
 
           return {
@@ -123,9 +126,8 @@ function RoomPage({
       
       // Preserve attachment metadata; decrypt on demand when the user downloads it.
       let decryptedAttachment: EncryptedAttachmentData | undefined;
-      if ((msg as any).attachment) {
-        const att = (msg as any).attachment as EncryptedAttachmentData;
-        decryptedAttachment = att;
+      if (msg.attachment) {
+        decryptedAttachment = msg.attachment as EncryptedAttachmentData;
       }
 
       setMessages(prev => [...prev, {
@@ -147,7 +149,7 @@ function RoomPage({
       }, 3000);
     });
 
-    socket.on('member-joined', async ({ username: joinedUser }: { username: string; publicKey: string }) => {
+    socket.on('member-joined', async ({ username: joinedUser }: MemberJoinedPayload) => {
       setMessages(prev => [...prev, {
         type: 'system',
         text: `🔐 ${joinedUser} joined with verified encryption`,
@@ -155,7 +157,7 @@ function RoomPage({
       } as SystemMessage]);
     });
 
-    socket.on('member-left', ({ username: leftUser }: { username: string }) => {
+    socket.on('member-left', ({ username: leftUser }: MemberLeftPayload) => {
       setMessages(prev => [...prev, {
         type: 'system',
         text: `${leftUser} left the room`,
@@ -163,7 +165,7 @@ function RoomPage({
       } as SystemMessage]);
     });
 
-    socket.on('members-update', async ({ members: updatedMembers, memberKeys }: { members: string[]; memberKeys: Record<string, string> }) => {
+    socket.on('members-update', async ({ members: updatedMembers, memberKeys }: MembersUpdatePayload) => {
       setMembers(updatedMembers);
       await onUpdateRoomKey(memberKeys);
     });

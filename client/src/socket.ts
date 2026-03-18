@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import type { SocketEvents } from './types';
+import type { ClientToServerEvents, ServerToClientEvents } from './types';
 
 const SOCKET_URL: string = window.location.origin;
 
@@ -9,7 +9,7 @@ function getAuthToken(): string | null {
 }
 
 // Socket type with our custom events
-type TypedSocket = Socket<SocketEvents, SocketEvents>;
+type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 // Create socket with auth token
 export const socket: TypedSocket = io(SOCKET_URL, {

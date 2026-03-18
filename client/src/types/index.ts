@@ -20,6 +20,10 @@ export interface AuthUser {
   email: string;
 }
 
+export type RoomType = 'legacy' | 'authenticated';
+export type AppPage = 'auth' | 'username' | 'home' | 'room';
+export type EncryptionStatus = 'initializing' | 'ready' | 'error';
+
 // ==================== AUTH TYPES ====================
 
 export interface AuthResponse {
@@ -55,7 +59,13 @@ export interface Room {
   roomId: string;
   roomCode: string;
   isOwner: boolean;
+  roomType?: RoomType;
   memberKeys?: Record<string, string>;
+}
+
+export interface RoomState extends Room {
+  memberKeys: Record<string, string>;
+  roomType: RoomType;
 }
 
 export interface RoomMember {
@@ -81,7 +91,7 @@ export interface EncryptedMessage {
   iv: string;
   senderUsername: string;
   timestamp: number;
-  attachmentId?: number;
+  attachment?: Attachment;
 }
 
 export interface DecryptedMessage extends EncryptedMessage {
@@ -134,53 +144,104 @@ export interface EncryptedUploadData {
 
 // ==================== SOCKET EVENT TYPES ====================
 
-export interface SocketEvents {
-  // Client -> Server
-  register: (data: { username: string; publicKey: string }) => void;
-  'create-room': () => void;
-  'request-join': (data: { roomCode: string }) => void;
-  'approve-join': (data: { requestId: string }) => void;
-  'deny-join': (data: { requestId: string }) => void;
-  'join-room': (data: { roomId: string }) => void;
-  'leave-room': (data: { roomId: string }) => void;
-  'send-encrypted-message': (data: {
-    roomId: string;
-    encryptedData: string;
-    iv: string;
-    senderUsername: string;
-    attachmentId?: number;
-  }) => void;
-  typing: (data: { roomId: string }) => void;
-  'request-upload-token': () => void;
+export interface SocketRegistrationPayload {
+  username: string;
+  publicKey: string;
+}
 
-  // Server -> Client
+export interface RoomCodePayload {
+  roomCode: string;
+}
+
+export interface RoomIdPayload {
+  roomId: string;
+}
+
+export interface RequestIdPayload {
+  requestId: string;
+}
+
+export interface SendEncryptedMessagePayload {
+  roomId: string;
+  encryptedData: string;
+  iv: string;
+  senderUsername: string;
+  attachmentId?: number;
+}
+
+export interface UploadTokenPayload {
+  token: string;
+}
+
+export interface RoomCreatedPayload {
+  roomId: string;
+  roomCode: string;
+  roomType?: RoomType;
+}
+
+export interface JoinApprovedPayload {
+  roomId: string;
+  roomCode: string;
+  roomType?: RoomType;
+  memberKeys: Record<string, string>;
+}
+
+export interface RoomDataPayload {
+  members: string[];
+  memberKeys: Record<string, string>;
+  encryptedMessages: EncryptedMessage[];
+}
+
+export interface MembersUpdatePayload {
+  members: string[];
+  memberKeys: Record<string, string>;
+}
+
+export interface MemberJoinedPayload {
+  username: string;
+  publicKey: string;
+}
+
+export interface MemberLeftPayload {
+  username: string;
+}
+
+export interface SocketErrorPayload {
+  message: string;
+}
+
+export interface ClientToServerEvents {
+  register: (data: SocketRegistrationPayload) => void;
+  'create-room': () => void;
+  'request-join': (data: RoomCodePayload) => void;
+  'approve-join': (data: RequestIdPayload) => void;
+  'deny-join': (data: RequestIdPayload) => void;
+  'join-room': (data: RoomIdPayload) => void;
+  'leave-room': (data: RoomIdPayload) => void;
+  'send-encrypted-message': (data: SendEncryptedMessagePayload) => void;
+  typing: (data: RoomIdPayload) => void;
+  'request-upload-token': () => void;
+}
+
+export interface ServerToClientEvents {
   registered: (data: { username: string }) => void;
-  'upload-token': (data: { token: string }) => void;
+  'upload-token': (data: UploadTokenPayload) => void;
   'username-taken': () => void;
-  'room-created': (data: { roomId: string; roomCode: string }) => void;
+  'room-created': (data: RoomCreatedPayload) => void;
   'join-request': (data: JoinRequest) => void;
-  'join-approved': (data: {
-    roomId: string;
-    roomCode: string;
-    memberKeys: Record<string, string>;
-  }) => void;
+  'join-approved': (data: JoinApprovedPayload) => void;
   'join-denied': () => void;
-  'room-data': (data: {
-    members: string[];
-    memberKeys: Record<string, string>;
-    encryptedMessages: EncryptedMessage[];
-  }) => void;
+  'room-data': (data: RoomDataPayload) => void;
   'new-encrypted-message': (message: EncryptedMessage) => void;
-  'member-joined': (data: { username: string; publicKey: string }) => void;
-  'member-left': (data: { username: string }) => void;
-  'members-update': (data: {
-    members: string[];
-    memberKeys: Record<string, string>;
-  }) => void;
+  'member-joined': (data: MemberJoinedPayload) => void;
+  'member-left': (data: MemberLeftPayload) => void;
+  'members-update': (data: MembersUpdatePayload) => void;
   'room-closed': () => void;
   'user-typing': (data: { username: string }) => void;
-  error: (data: { message: string }) => void;
+  error: (data: SocketErrorPayload) => void;
 }
+
+export type SocketEvents = ClientToServerEvents & ServerToClientEvents;
 
 // ==================== ENCRYPTION TYPES ====================
 
@@ -227,7 +288,7 @@ export interface RoomPageProps {
   encryption: RoomEncryptionInterface;
   onUpdateRoomKey: (memberKeys: Record<string, string>) => Promise<void>;
   onLeave: () => void;
-  roomType?: 'legacy' | 'authenticated';
+  roomType?: RoomType;
 }
 
 export interface FileUploadProps {
