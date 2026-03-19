@@ -101,6 +101,11 @@
   width: 62px;
 }
 
+.brand-mark .brand-glyph {
+  height: 36px;
+  width: 36px;
+}
+
 .brand-copy {
   display: grid;
   gap: 4px;

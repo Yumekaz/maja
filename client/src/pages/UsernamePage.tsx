@@ -1,4 +1,5 @@
 import React, { useState, FormEvent, ChangeEvent } from 'react';
+import BrandGlyph from '../components/BrandGlyph';
 import '../styles/landing.css';
 
 interface UsernamePageProps {
@@ -32,7 +33,7 @@ function UsernamePage({ onRegister, encryptionReady }: UsernamePageProps): JSX.E
         <section className="landing-intro compact-intro">
           <div className="brand-row">
             <div className="brand-mark" aria-hidden="true">
-              <span>M</span>
+              <BrandGlyph title="MAJA" />
             </div>
             <div className="brand-copy">
               <span className="eyebrow">Room-code access</span>
@@ -84,7 +85,9 @@ function UsernamePage({ onRegister, encryptionReady }: UsernamePageProps): JSX.E
             >
               {encryptionReady ? (
                 <>
-                  <span className="btn-icon">🔐</span>
+                  <span className="btn-inline-icon">
+                    <BrandGlyph framed={false} />
+                  </span>
                   Start local session
                 </>
               ) : (

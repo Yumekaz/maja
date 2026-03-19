@@ -1,6 +1,7 @@
 import React, { useState, FormEvent, ChangeEvent } from 'react';
 import authService from '../services/authService';
 import type { AuthPageProps, AuthUser } from '../types';
+import BrandGlyph from '../components/BrandGlyph';
 import '../styles/landing.css';
 
 function AuthPage({ onAuth, encryptionReady }: AuthPageProps): JSX.Element {
@@ -72,10 +73,10 @@ function AuthPage({ onAuth, encryptionReady }: AuthPageProps): JSX.Element {
         <section className="landing-intro">
           <div className="brand-row">
             <div className="brand-mark" aria-hidden="true">
-              <span>M</span>
+              <BrandGlyph title="MAJA" />
             </div>
             <div className="brand-copy">
-              <span className="eyebrow">Offline-first encrypted messenger</span>
+              <span className="eyebrow">Internet-free encrypted messenger</span>
               <span className="brand-subcopy">No internet required. Same Wi‑Fi, hotspot, or LAN.</span>
             </div>
           </div>
@@ -202,7 +203,9 @@ function AuthPage({ onAuth, encryptionReady }: AuthPageProps): JSX.Element {
                 </>
               ) : encryptionReady ? (
                 <>
-                  <span className="btn-icon">🔐</span>
+                  <span className="btn-inline-icon">
+                    <BrandGlyph framed={false} />
+                  </span>
                   {isLogin ? 'Sign in' : 'Create account'}
                 </>
               ) : (

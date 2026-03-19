@@ -1,4 +1,5 @@
 import React, { useState, FormEvent, ChangeEvent } from 'react';
+import BrandGlyph from '../components/BrandGlyph';
 import type { HomePageProps } from '../types';
 import '../styles/landing.css';
 
@@ -30,11 +31,11 @@ function HomePage({ username, onCreateRoom, onJoinRoom, socketConnected }: HomeP
           <div className="home-hero">
             <div className="brand-row">
               <div className="brand-mark" aria-hidden="true">
-                <span>{username.charAt(0).toUpperCase()}</span>
+                <BrandGlyph title="MAJA" />
               </div>
               <div className="brand-copy">
                 <span className="eyebrow">Local session active</span>
-                <span className="brand-subcopy">Private messaging over local Wi‑Fi or hotspot. No internet required.</span>
+                <span className="brand-subcopy">{username} is ready on this local link. No internet required.</span>
               </div>
             </div>
 

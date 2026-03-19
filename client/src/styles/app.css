@@ -210,6 +210,50 @@ code {
   opacity: 0.55;
 }
 
+.brand-glyph {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.brand-glyph__frame {
+  fill: rgba(29, 118, 103, 0.1);
+  stroke: rgba(29, 118, 103, 0.14);
+  stroke-width: 1.5;
+}
+
+.brand-glyph__link {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.brand-glyph__node {
+  stroke: rgba(255, 250, 244, 0.94);
+  stroke-width: 1.8;
+}
+
+.brand-glyph__node--primary {
+  fill: var(--accent-primary);
+}
+
+.brand-glyph__node--muted {
+  fill: var(--info);
+}
+
+.brand-glyph__node--warm {
+  fill: var(--accent-warm);
+}
+
+.btn-inline-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 18px;
+  width: 18px;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, #1f7d6d 0%, #226050 100%);
   box-shadow: 0 14px 26px rgba(29, 118, 103, 0.2);
@@ -856,6 +900,11 @@ code {
   height: 22px;
   justify-content: center;
   width: 22px;
+}
+
+.badge-glyph {
+  height: 12px;
+  width: 12px;
 }
 
 .upload-progress {

@@ -340,7 +340,7 @@ function useMessengerController(): UseMessengerControllerResult {
       setCurrentPage('room');
 
       const typeLabel = normalizeRoomType(roomType) === 'authenticated' ? ' (Authenticated)' : '';
-      showToastRef.current(`🔐 Joined secure room${typeLabel}`, 'success');
+      showToastRef.current(`Joined secure room${typeLabel}`, 'success');
     };
 
     const handleJoinDenied: ServerToClientEvents['join-denied'] = () => {

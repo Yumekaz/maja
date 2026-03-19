@@ -1,4 +1,4 @@
-# SecureChat - Internet-Free Local Messenger
+# MAJA - Internet-Free Local Messenger
 
 Private group messaging over the **same Wi-Fi, hotspot, or LAN** with **end-to-end encryption**, **owner-approved room access**, and **no internet requirement**.
 
@@ -65,7 +65,7 @@ npm run build       # Build React frontend
 #### 2. Generate SSL Certificates (Required for Mobile)
 ```bash
 mkdir ssl
-openssl req -x509 -newkey rsa:2048 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -nodes -subj "/CN=SecureChat"
+openssl req -x509 -newkey rsa:2048 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -nodes -subj "/CN=MAJA"
 ```
 
 #### 3. Start Server

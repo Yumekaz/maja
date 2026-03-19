@@ -4,6 +4,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import ConfirmModal from '../components/ConfirmModal';
 import FileUpload from '../components/FileUpload';
 import MessageAttachment from '../components/MessageAttachment';
+import BrandGlyph from '../components/BrandGlyph';
 import fileService from '../services/fileService';
 import '../styles/room.css';
 import type {
@@ -455,7 +456,7 @@ function RoomPage({
             <div className="room-title-section">
               <div className="room-title-row">
                 <h3>
-                  <span className="lock-icon">🔒</span>
+                  <BrandGlyph className="room-title-glyph" framed={false} />
                   Room {roomCode}
                 </h3>
                 <span className={`room-badge room-badge--${roomType}`}>
@@ -625,7 +626,9 @@ function RoomPage({
                     />
                   )}
                   {!isSystemMessage(msg) && (msg as DecryptedMessage).decrypted && (
-                    <span className="encrypted-badge" title="Decrypted successfully">🔓</span>
+                    <span className="encrypted-badge" title="Decrypted successfully">
+                      <BrandGlyph className="member-status-glyph" framed={false} />
+                    </span>
                   )}
                 </div>
               </div>
@@ -660,7 +663,9 @@ function RoomPage({
                         <span className="member-name">{member}</span>
                         {member === username && <span className="you-badge">You</span>}
                       </div>
-                      <span className="member-status-icon" title="Encryption verified">🔐</span>
+                      <span className="member-status-icon" title="Encryption verified">
+                        <BrandGlyph className="member-status-glyph" framed={false} />
+                      </span>
                     </li>
                   ))}
                 </ul>

@@ -75,8 +75,10 @@
   letter-spacing: -0.03em;
 }
 
-.lock-icon {
-  font-size: 0.95rem;
+.room-title-glyph {
+  flex: 0 0 auto;
+  height: 18px;
+  width: 18px;
 }
 
 .room-badge {
@@ -627,7 +629,15 @@
 }
 
 .member-status-icon {
-  font-size: 0.9rem;
+  align-items: center;
+  color: var(--accent-primary);
+  display: inline-flex;
+  justify-content: center;
+}
+
+.member-status-glyph {
+  height: 14px;
+  width: 14px;
 }
 
 .message-input-form {

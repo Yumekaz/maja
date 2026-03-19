@@ -258,7 +258,7 @@ class FileService {
     if (mimetype === 'application/pdf') return '📄';
     if (mimetype.includes('word')) return '📝';
     if (mimetype === 'text/plain') return '📃';
-    if (mimetype === 'application/octet-stream') return '🔒';
+    if (mimetype === 'application/octet-stream') return '◈';
     return '📎';
   }
 }

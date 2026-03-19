@@ -1,4 +1,5 @@
 import React, { useState, useRef, ChangeEvent, DragEvent } from 'react';
+import BrandGlyph from './BrandGlyph';
 import fileService from '../services/fileService';
 import type { FileUploadProps, Attachment } from '../types';
 
@@ -145,7 +146,9 @@ function FileUpload({ roomId, onFileUploaded, disabled = false, encryptFile }: E
           {errorMessage || (dragOver ? 'Drop to attach' : 'Drag, drop, or browse')}
         </span>
         {encryptFile && !uploading && (
-          <span className="encryption-badge" title="Files are end-to-end encrypted">🔒</span>
+          <span className="encryption-badge" title="Files are end-to-end encrypted">
+            <BrandGlyph className="badge-glyph" framed={false} />
+          </span>
         )}
         {errorMessage && (
           <span className="file-upload-error" role="status">
