@@ -149,19 +149,21 @@ function useMessengerController(): UseMessengerControllerResult {
     wrappedRoomKey,
     wrappedRoomKeyIv,
     keySenderUsername,
+    keySenderPublicKey,
   }: {
     roomCode: string;
     memberKeys: Record<string, string>;
     wrappedRoomKey?: string | null;
     wrappedRoomKeyIv?: string | null;
     keySenderUsername?: string | null;
+    keySenderPublicKey?: string | null;
   }): Promise<void> => {
     if (!encryptionRef.current) {
       return;
     }
 
     if (wrappedRoomKey && wrappedRoomKeyIv && keySenderUsername) {
-      const senderPublicKey = memberKeys[keySenderUsername];
+      const senderPublicKey = keySenderPublicKey || memberKeys[keySenderUsername];
       if (!senderPublicKey) {
         throw new Error('Missing sender key for room key restore');
       }
@@ -350,26 +352,16 @@ function useMessengerController(): UseMessengerControllerResult {
       showToastRef.current('Username taken. Try another!', 'error');
     };
 
-    const handleRoomCreated: ServerToClientEvents['room-created'] = async ({
+    const handleRoomCreated: ServerToClientEvents['room-created'] = ({
       roomId,
       roomCode,
       roomType,
     }: RoomCreatedPayload) => {
       const publicKey = encryptionRef.current?.publicKeyExported;
-      if (!encryptionRef.current || !publicKey) {
+      if (!publicKey) {
+        showToastRef.current('Room was created, but the local encryption identity is unavailable.', 'error');
         return;
       }
-
-      await encryptionRef.current.createRoomKey();
-      const { wrappedRoomKey, wrappedRoomKeyIv } =
-        await encryptionRef.current.wrapRoomKeyForMember(publicKey);
-
-      socket.emit('sync-room-key', {
-        roomId,
-        wrappedRoomKey,
-        wrappedRoomKeyIv,
-        keySenderUsername: usernameRef.current,
-      });
 
       setCurrentRoom({
         roomId,
@@ -400,10 +392,11 @@ function useMessengerController(): UseMessengerControllerResult {
       roomCode,
       roomType,
       memberKeys,
-      wrappedRoomKey,
-      wrappedRoomKeyIv,
-      keySenderUsername,
-    }: JoinApprovedPayload) => {
+        wrappedRoomKey,
+        wrappedRoomKeyIv,
+        keySenderUsername,
+        keySenderPublicKey,
+      }: JoinApprovedPayload) => {
       if (!encryptionRef.current) {
         return;
       }
@@ -415,6 +408,7 @@ function useMessengerController(): UseMessengerControllerResult {
           wrappedRoomKey,
           wrappedRoomKeyIv,
           keySenderUsername,
+          keySenderPublicKey,
         });
 
         setCurrentRoom({
@@ -516,7 +510,28 @@ function useMessengerController(): UseMessengerControllerResult {
   };
 
   const handleCreateRoom = (): void => {
-    socket.emit('create-room');
+    const encryptionInstance = encryptionRef.current;
+    const publicKey = encryptionInstance?.publicKeyExported;
+    if (!encryptionInstance || !publicKey || !usernameRef.current) {
+      showToastRef.current('Secure identity is still initializing.', 'info');
+      return;
+    }
+
+    void (async () => {
+      try {
+        await encryptionInstance.createRoomKey();
+        const { wrappedRoomKey, wrappedRoomKeyIv } =
+          await encryptionInstance.wrapRoomKeyForMember(publicKey);
+
+        socket.emit('create-room', {
+          wrappedRoomKey,
+          wrappedRoomKeyIv,
+        });
+      } catch (error) {
+        console.error('Failed to prepare room key for creation:', error);
+        showToastRef.current('Could not prepare encrypted room keys.', 'error');
+      }
+    })();
   };
 
   const handleJoinRoom = (roomCode: string): void => {

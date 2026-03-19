@@ -300,6 +300,7 @@ function RoomPage({
       wrappedRoomKey,
       wrappedRoomKeyIv,
       keySenderUsername,
+      keySenderPublicKey,
     }: {
       members: string[];
       memberKeys: Record<string, string>;
@@ -307,6 +308,7 @@ function RoomPage({
       wrappedRoomKey?: string | null;
       wrappedRoomKeyIv?: string | null;
       keySenderUsername?: string | null;
+      keySenderPublicKey?: string | null;
     }) => {
       if (!active) {
         return;
@@ -316,10 +318,12 @@ function RoomPage({
 
       try {
         if (wrappedRoomKey && wrappedRoomKeyIv && keySenderUsername && !encryption.hasRoomKey()) {
-          const senderPublicKey = memberKeys[keySenderUsername];
-          if (senderPublicKey) {
-            await encryption.restoreRoomKey(senderPublicKey, wrappedRoomKey, wrappedRoomKeyIv);
+          const senderPublicKey = keySenderPublicKey || memberKeys[keySenderUsername];
+          if (!senderPublicKey) {
+            throw new Error('Missing sender key for room key restore');
           }
+
+          await encryption.restoreRoomKey(senderPublicKey, wrappedRoomKey, wrappedRoomKeyIv);
         } else if (!encryption.hasRoomKey()) {
           await encryption.setLegacyRoomKey(roomCode, Object.values(memberKeys));
         }

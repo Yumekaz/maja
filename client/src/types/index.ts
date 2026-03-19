@@ -167,6 +167,11 @@ export interface WrappedRoomKeyPayload {
   keySenderUsername: string;
 }
 
+export interface CreateRoomPayload {
+  wrappedRoomKey: string;
+  wrappedRoomKeyIv: string;
+}
+
 export interface SendEncryptedMessagePayload {
   roomId: string;
   encryptedData: string;
@@ -193,6 +198,7 @@ export interface JoinApprovedPayload {
   wrappedRoomKey?: string | null;
   wrappedRoomKeyIv?: string | null;
   keySenderUsername?: string | null;
+  keySenderPublicKey?: string | null;
 }
 
 export interface RoomDataPayload {
@@ -202,6 +208,7 @@ export interface RoomDataPayload {
   wrappedRoomKey?: string | null;
   wrappedRoomKeyIv?: string | null;
   keySenderUsername?: string | null;
+  keySenderPublicKey?: string | null;
 }
 
 export interface MembersUpdatePayload {
@@ -224,7 +231,7 @@ export interface SocketErrorPayload {
 
 export interface ClientToServerEvents {
   register: (data: SocketRegistrationPayload) => void;
-  'create-room': () => void;
+  'create-room': (data: CreateRoomPayload) => void;
   'request-join': (data: RoomCodePayload) => void;
   'approve-join': (data: RequestIdPayload & WrappedRoomKeyPayload) => void;
   'deny-join': (data: RequestIdPayload) => void;

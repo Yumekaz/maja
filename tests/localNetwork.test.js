@@ -36,6 +36,30 @@ describe('Local network boundary', () => {
     });
   });
 
+  it('allows IPv6 peers inside a local subnet', () => {
+    jest.spyOn(os, 'networkInterfaces').mockReturnValue({
+      WiFi: [
+        {
+          address: 'fd12:3456:789a::1',
+          cidr: 'fd12:3456:789a::1/64',
+          netmask: 'ffff:ffff:ffff:ffff::',
+          family: 'IPv6',
+          internal: false,
+        },
+      ],
+    });
+
+    const result = evaluateLocalNetworkAccess('fd12:3456:789a::99');
+
+    expect(result.allowed).toBe(true);
+    expect(result.normalizedAddress).toBe('fd12:3456:789a::99');
+    expect(result.matchedNetwork).toMatchObject({
+      address: 'fd12:3456:789a::1',
+      cidr: 'fd12:3456:789a::1/64',
+      version: 6,
+    });
+  });
+
   it('rejects addresses outside every local subnet', () => {
     jest.spyOn(os, 'networkInterfaces').mockReturnValue({
       WiFi: [

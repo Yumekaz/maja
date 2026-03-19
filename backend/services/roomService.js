@@ -30,11 +30,11 @@ class RoomService {
   /**
    * Create a new room
    */
-  create(userId, username, roomType = userId ? 'authenticated' : 'legacy') {
+  create(userId, username, roomType = userId ? 'authenticated' : 'legacy', ownerKeyMaterial = {}) {
     const roomId = this.generateRoomId();
     const roomCode = this.generateRoomCode();
 
-    const room = db.createRoom(roomId, roomCode, userId, username, roomType);
+    const room = db.createRoom(roomId, roomCode, userId, username, roomType, ownerKeyMaterial);
 
     logger.info('Room created', { roomId, roomCode, owner: username, roomType });
 

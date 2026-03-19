@@ -6,6 +6,8 @@
 const authService = require('../services/authService');
 const { AuthenticationError } = require('../utils/errors');
 
+const MULTIPART_DRAIN_LIMIT_BYTES = 64 * 1024;
+
 function forwardAuthError(req, next, error) {
   const contentType = req.headers['content-type'] || '';
   const isMultipart = contentType.includes('multipart/form-data');
@@ -15,19 +17,36 @@ function forwardAuthError(req, next, error) {
     return;
   }
 
+  let drainedBytes = 0;
   let settled = false;
+
+  const cleanup = () => {
+    req.off('data', handleData);
+    req.off('end', finalize);
+    req.off('close', finalize);
+    req.off('error', finalize);
+  };
+
   const finalize = () => {
     if (settled) {
       return;
     }
 
     settled = true;
-    req.off('end', finalize);
-    req.off('close', finalize);
-    req.off('error', finalize);
+    cleanup();
     next(error);
   };
 
+  const handleData = (chunk) => {
+    drainedBytes += chunk.length;
+    if (drainedBytes > MULTIPART_DRAIN_LIMIT_BYTES && !req.destroyed) {
+      settled = true;
+      cleanup();
+      req.destroy();
+    }
+  };
+
+  req.on('data', handleData);
   req.on('end', finalize);
   req.on('close', finalize);
   req.on('error', finalize);

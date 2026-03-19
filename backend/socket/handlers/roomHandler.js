@@ -15,42 +15,59 @@ function createRoomHandler(io, socket, state) {
   /**
    * Create room
    */
-  socket.on('create-room', () => {
+  socket.on('create-room', ({ wrappedRoomKey, wrappedRoomKeyIv } = {}) => {
     const user = users.get(socket.id);
     if (!user) {
       socket.emit('error', { message: 'Not registered' });
       return;
     }
 
+    if (!wrappedRoomKey || !wrappedRoomKeyIv || !user.publicKey) {
+      socket.emit('error', { message: 'Room key not ready yet' });
+      return;
+    }
+
     // Determine room type based on user authentication
     const roomType = user.id ? 'authenticated' : 'legacy';
-    const room = roomService.create(user.id, user.username, roomType);
+    const room = roomService.create(user.id, user.username, roomType, {
+      wrappedRoomKey,
+      wrappedRoomKeyIv,
+      keySenderUsername: user.username,
+      keySenderPublicKey: user.publicKey,
+    });
 
     socket.join(room.roomId);
     socketToRooms.get(socket.id).add(room.roomId);
     socket.emit('room-created', room);
   });
 
-  socket.on('sync-room-key', ({ roomId, wrappedRoomKey, wrappedRoomKeyIv, keySenderUsername }) => {
+  socket.on('sync-room-key', (
+    { roomId, wrappedRoomKey, wrappedRoomKeyIv, keySenderUsername },
+    callback = () => {}
+  ) => {
     const user = users.get(socket.id);
     if (!user) {
       socket.emit('error', { message: 'Not registered' });
+      callback({ ok: false, message: 'Not registered' });
       return;
     }
 
     const dbRoom = db.getRoomById(roomId);
     if (!dbRoom) {
       socket.emit('error', { message: 'Room not found' });
+      callback({ ok: false, message: 'Room not found' });
       return;
     }
 
     if (!db.isRoomMember(roomId, user.username)) {
       socket.emit('error', { message: 'Not a member' });
+      callback({ ok: false, message: 'Not a member' });
       return;
     }
 
-    if (!wrappedRoomKey || !wrappedRoomKeyIv || keySenderUsername !== user.username) {
+    if (!wrappedRoomKey || !wrappedRoomKeyIv || keySenderUsername !== user.username || !user.publicKey) {
       socket.emit('error', { message: 'Invalid room key payload' });
+      callback({ ok: false, message: 'Invalid room key payload' });
       return;
     }
 
@@ -59,8 +76,10 @@ function createRoomHandler(io, socket, state) {
       user.username,
       wrappedRoomKey,
       wrappedRoomKeyIv,
-      keySenderUsername
+      keySenderUsername,
+      user.publicKey
     );
+    callback({ ok: true });
   });
 
   /**
@@ -99,6 +118,7 @@ function createRoomHandler(io, socket, state) {
         wrappedRoomKey: roomMember?.wrapped_room_key || null,
         wrappedRoomKeyIv: roomMember?.wrapped_room_key_iv || null,
         keySenderUsername: roomMember?.key_sender_username || null,
+        keySenderPublicKey: roomMember?.key_sender_public_key || null,
       });
       return;
     }
@@ -197,7 +217,8 @@ function createRoomHandler(io, socket, state) {
       request.username,
       wrappedRoomKey,
       wrappedRoomKeyIv,
-      keySenderUsername
+      keySenderUsername,
+      user.publicKey || null
     );
 
     // Get the requester's socket
@@ -216,6 +237,7 @@ function createRoomHandler(io, socket, state) {
         wrappedRoomKey,
         wrappedRoomKeyIv,
         keySenderUsername,
+        keySenderPublicKey: user.publicKey || null,
       });
 
       socket.to(request.roomId).emit('member-joined', {
@@ -313,6 +335,7 @@ function createRoomHandler(io, socket, state) {
       wrappedRoomKey: roomMember?.wrapped_room_key || null,
       wrappedRoomKeyIv: roomMember?.wrapped_room_key_iv || null,
       keySenderUsername: roomMember?.key_sender_username || null,
+      keySenderPublicKey: roomMember?.key_sender_public_key || null,
     });
 
     logger.debug('User joined room', { username: user.username, roomId });

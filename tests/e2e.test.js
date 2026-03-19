@@ -48,8 +48,8 @@ function waitForSocketConnection(socket, timeout = 5000) {
 }
 
 describe('E2E: Complete User Flow', () => {
-  const userA = { email: '', token: '', username: '', socket: null };
-  const userB = { email: '', token: '', username: '', socket: null };
+  const userA = { email: '', token: '', username: '', socket: null, publicKey: '' };
+  const userB = { email: '', token: '', username: '', socket: null, publicKey: '' };
   let roomCode = '';
   let roomId = '';
 
@@ -148,10 +148,11 @@ describe('E2E: Complete User Flow', () => {
       expect(userA.username).toBeTruthy();
 
       const registerPromise = waitForEvent(userA.socket, 'registered');
+      userA.publicKey = `mock-public-key-a-${Date.now()}`;
 
       userA.socket.emit('register', {
         username: userA.username,
-        publicKey: `mock-public-key-a-${Date.now()}`,
+        publicKey: userA.publicKey,
       });
 
       const result = await registerPromise;
@@ -187,6 +188,7 @@ describe('E2E: Complete User Flow', () => {
       expect(roomData).toHaveProperty('wrappedRoomKey', 'mock-wrapped-room-key-owner');
       expect(roomData).toHaveProperty('wrappedRoomKeyIv', 'mock-wrapped-room-iv-owner');
       expect(roomData).toHaveProperty('keySenderUsername', userA.username);
+      expect(roomData).toHaveProperty('keySenderPublicKey', userA.publicKey);
     });
 
     it('User B should register with socket and public key', async () => {
@@ -194,10 +196,11 @@ describe('E2E: Complete User Flow', () => {
       expect(userB.username).toBeTruthy();
 
       const registerPromise = waitForEvent(userB.socket, 'registered');
+      userB.publicKey = `mock-public-key-b-${Date.now()}`;
 
       userB.socket.emit('register', {
         username: userB.username,
-        publicKey: `mock-public-key-b-${Date.now()}`,
+        publicKey: userB.publicKey,
       });
 
       const result = await registerPromise;
@@ -229,6 +232,7 @@ describe('E2E: Complete User Flow', () => {
       expect(joinApproved).toHaveProperty('wrappedRoomKey', 'mock-wrapped-room-key-member');
       expect(joinApproved).toHaveProperty('wrappedRoomKeyIv', 'mock-wrapped-room-iv-member');
       expect(joinApproved).toHaveProperty('keySenderUsername', userA.username);
+      expect(joinApproved).toHaveProperty('keySenderPublicKey', userA.publicKey);
     });
   });
 

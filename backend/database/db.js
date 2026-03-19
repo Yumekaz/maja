@@ -100,6 +100,7 @@ async function initializeDatabase() {
       wrapped_room_key TEXT,
       wrapped_room_key_iv TEXT,
       key_sender_username TEXT,
+      key_sender_public_key TEXT,
       joined_at TEXT DEFAULT (datetime('now')),
       UNIQUE(room_id, username)
     );
@@ -155,6 +156,7 @@ async function initializeDatabase() {
   ensureColumn('room_members', 'wrapped_room_key', 'TEXT');
   ensureColumn('room_members', 'wrapped_room_key_iv', 'TEXT');
   ensureColumn('room_members', 'key_sender_username', 'TEXT');
+  ensureColumn('room_members', 'key_sender_public_key', 'TEXT');
 
   saveDatabase();
   saveInterval = setInterval(saveDatabase, 30000);
@@ -309,15 +311,30 @@ function cleanupExpiredTokens() {
 
 // ==================== ROOM OPERATIONS ====================
 
-function createRoom(roomId, roomCode, ownerId, ownerUsername, roomType = 'legacy') {
+function createRoom(roomId, roomCode, ownerId, ownerUsername, roomType = 'legacy', keyMaterial = {}) {
+  const {
+    wrappedRoomKey = null,
+    wrappedRoomKeyIv = null,
+    keySenderUsername = null,
+    keySenderPublicKey = null,
+  } = keyMaterial;
+
   runQuery(
     `INSERT INTO rooms (room_id, room_code, owner_id, owner_username, room_type) VALUES (?, ?, ?, ?, ?)`,
     [roomId, roomCode, ownerId, ownerUsername, roomType]
   );
   runQuery(
-    `INSERT INTO room_members (room_id, user_id, username, wrapped_room_key, wrapped_room_key_iv, key_sender_username)
-     VALUES (?, ?, ?, NULL, NULL, NULL)`,
-    [roomId, ownerId, ownerUsername]
+    `INSERT INTO room_members (
+      room_id,
+      user_id,
+      username,
+      wrapped_room_key,
+      wrapped_room_key_iv,
+      key_sender_username,
+      key_sender_public_key
+    )
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [roomId, ownerId, ownerUsername, wrappedRoomKey, wrappedRoomKeyIv, keySenderUsername, keySenderPublicKey]
   );
   return { roomId, roomCode, ownerId, ownerUsername, roomType };
 }
@@ -337,8 +354,16 @@ function addRoomMember(roomId, userId, username) {
   );
   if (!existing) {
     return runQuery(
-      `INSERT INTO room_members (room_id, user_id, username, wrapped_room_key, wrapped_room_key_iv, key_sender_username)
-       VALUES (?, ?, ?, NULL, NULL, NULL)`,
+      `INSERT INTO room_members (
+        room_id,
+        user_id,
+        username,
+        wrapped_room_key,
+        wrapped_room_key_iv,
+        key_sender_username,
+        key_sender_public_key
+      )
+       VALUES (?, ?, ?, NULL, NULL, NULL, NULL)`,
       [roomId, userId, username]
     );
   }
@@ -350,13 +375,14 @@ function setRoomMemberKeyMaterial(
   username,
   wrappedRoomKey,
   wrappedRoomKeyIv,
-  keySenderUsername
+  keySenderUsername,
+  keySenderPublicKey
 ) {
   return runQuery(
     `UPDATE room_members
-     SET wrapped_room_key = ?, wrapped_room_key_iv = ?, key_sender_username = ?
+     SET wrapped_room_key = ?, wrapped_room_key_iv = ?, key_sender_username = ?, key_sender_public_key = ?
      WHERE room_id = ? AND username = ?`,
-    [wrappedRoomKey, wrappedRoomKeyIv, keySenderUsername, roomId, username]
+    [wrappedRoomKey, wrappedRoomKeyIv, keySenderUsername, keySenderPublicKey, roomId, username]
   );
 }
 
@@ -377,7 +403,7 @@ function isRoomMember(roomId, username) {
 function getRoomMembers(roomId) {
   return getAll(`
     SELECT rm.username, u.public_key, u.id as user_id,
-           rm.wrapped_room_key, rm.wrapped_room_key_iv, rm.key_sender_username
+           rm.wrapped_room_key, rm.wrapped_room_key_iv, rm.key_sender_username, rm.key_sender_public_key
     FROM room_members rm
     LEFT JOIN users u ON rm.username = u.username
     WHERE rm.room_id = ?
@@ -387,7 +413,7 @@ function getRoomMembers(roomId) {
 function getRoomMember(roomId, username) {
   return getOne(`
     SELECT rm.username, u.public_key, u.id as user_id,
-           rm.wrapped_room_key, rm.wrapped_room_key_iv, rm.key_sender_username
+           rm.wrapped_room_key, rm.wrapped_room_key_iv, rm.key_sender_username, rm.key_sender_public_key
     FROM room_members rm
     LEFT JOIN users u ON rm.username = u.username
     WHERE rm.room_id = ? AND rm.username = ?
