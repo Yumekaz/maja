@@ -10,6 +10,10 @@ function uniqueSuffix(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function buildUser(prefix: string): TestUser {
   const base = `${prefix}_${uniqueSuffix()}`.replace(/[^a-zA-Z0-9_]/g, '');
   const username = base.slice(0, 20);
@@ -43,7 +47,11 @@ export async function registerUser(page: Page, user: TestUser): Promise<void> {
   await page.getByRole('button', { name: /create account/i }).click();
 
   await expect(page.getByRole('button', { name: /create room/i })).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText(user.username)).toBeVisible();
+  await expect(
+    page.getByRole('heading', {
+      name: new RegExp(`welcome back,\\s*${escapeRegex(user.username)}`, 'i'),
+    })
+  ).toBeVisible();
 }
 
 export async function loginUser(page: Page, user: TestUser, password: string = user.password): Promise<void> {

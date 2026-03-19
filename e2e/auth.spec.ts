@@ -18,6 +18,10 @@ const testUser: TestUser = {
   password: 'TestPassword123',
 };
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 test.describe('Authentication Flow', () => {
   test.describe.configure({ mode: 'serial' });
 
@@ -49,7 +53,11 @@ test.describe('Authentication Flow', () => {
     await loginUser(page, testUser);
 
     await expect(page.getByRole('button', { name: /create room/i })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(testUser.username)).toBeVisible();
+    await expect(
+      page.getByRole('heading', {
+        name: new RegExp(`welcome back,\\s*${escapeRegex(testUser.username)}`, 'i'),
+      })
+    ).toBeVisible();
   });
 
   test('should show error for invalid credentials', async ({ page }) => {
