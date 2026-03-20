@@ -28,7 +28,9 @@ interface UseMessengerControllerResult {
   currentRoom: RoomState | null;
   encryption: ReturnType<typeof useEncryption>['encryption'];
   encryptionStatus: EncryptionStatus;
+  isCreatingRoom: boolean;
   isAuthenticated: boolean;
+  isLeavingRoom: boolean;
   joinRequests: JoinRequest[];
   socketConnected: boolean;
   toast: ReturnType<typeof useToast>['toast'];
@@ -39,7 +41,7 @@ interface UseMessengerControllerResult {
   handleCreateRoom: () => void;
   handleDenyJoin: (requestId: string) => void;
   handleJoinRoom: (roomCode: string) => void;
-  handleLeaveRoom: () => void;
+  handleLeaveRoom: () => Promise<void>;
   handleLogout: () => Promise<void>;
   handleRegister: (name: string) => Promise<void>;
   handleUpdateRoomKey: (memberKeys: Record<string, string>) => Promise<void>;
@@ -52,6 +54,8 @@ function useMessengerController(): UseMessengerControllerResult {
   const [currentPage, setCurrentPage] = useState<AppPage>('auth');
   const [username, setUsername] = useState('');
   const [currentRoom, setCurrentRoom] = useState<RoomState | null>(null);
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [isLeavingRoom, setIsLeavingRoom] = useState(false);
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [socketConnected, setSocketConnected] = useState(socket.connected);
 
@@ -63,9 +67,34 @@ function useMessengerController(): UseMessengerControllerResult {
   const hasRegisteredRef = useRef(false);
   const pendingReconnectRef = useRef(false);
   const authRefreshPromiseRef = useRef<Promise<void> | null>(null);
+  const createRoomPendingRef = useRef(false);
+  const createRoomTimeoutRef = useRef<number | null>(null);
   const { toast, showToast } = useToast();
   const showToastRef = useRef(showToast);
   const { encryption, encryptionRef, encryptionStatus } = useEncryption();
+
+  function clearCreateRoomPending(): void {
+    createRoomPendingRef.current = false;
+    setIsCreatingRoom(false);
+    if (createRoomTimeoutRef.current !== null) {
+      clearTimeout(createRoomTimeoutRef.current);
+      createRoomTimeoutRef.current = null;
+    }
+  }
+
+  function markCreateRoomPending(): void {
+    clearCreateRoomPending();
+    createRoomPendingRef.current = true;
+    setIsCreatingRoom(true);
+    createRoomTimeoutRef.current = window.setTimeout(() => {
+      if (!createRoomPendingRef.current) {
+        return;
+      }
+
+      clearCreateRoomPending();
+      showToastRef.current('Room creation timed out. Please try again.', 'error');
+    }, 10000);
+  }
 
   useEffect(() => {
     usernameRef.current = username;
@@ -83,7 +112,14 @@ function useMessengerController(): UseMessengerControllerResult {
     showToastRef.current = showToast;
   }, [showToast]);
 
+  useEffect(() => {
+    return () => {
+      clearCreateRoomPending();
+    };
+  }, []);
+
   const clearActiveSessionState = (nextPage: AppPage): void => {
+    clearCreateRoomPending();
     pendingRoomCodeRef.current = null;
     usernameRef.current = '';
     currentRoomRef.current = null;
@@ -93,6 +129,7 @@ function useMessengerController(): UseMessengerControllerResult {
     setIsAuthenticated(false);
     setUsername('');
     setCurrentRoom(null);
+    setIsLeavingRoom(false);
     setJoinRequests([]);
     setCurrentPage(nextPage);
   };
@@ -104,6 +141,7 @@ function useMessengerController(): UseMessengerControllerResult {
 
     const handleDisconnectState = () => {
       setSocketConnected(false);
+      clearCreateRoomPending();
 
       if (hasRegisteredRef.current) {
         pendingReconnectRef.current = true;
@@ -207,6 +245,35 @@ function useMessengerController(): UseMessengerControllerResult {
           }
 
           resolve();
+        }
+      );
+    });
+  };
+
+  const leaveRoomOnServer = async (roomId: string): Promise<{ roomClosed?: boolean }> => {
+    return new Promise((resolve, reject) => {
+      (socket.timeout(10000) as any).emit(
+        'leave-room',
+        { roomId },
+        (
+          error: Error | null,
+          response?: {
+            ok?: boolean;
+            message?: string;
+            roomClosed?: boolean;
+          }
+        ) => {
+          if (error) {
+            reject(new Error('Leave request timed out'));
+            return;
+          }
+
+          if (!response?.ok) {
+            reject(new Error(response?.message || 'Could not leave the room'));
+            return;
+          }
+
+          resolve({ roomClosed: response.roomClosed });
         }
       );
     });
@@ -359,10 +426,12 @@ function useMessengerController(): UseMessengerControllerResult {
     }: RoomCreatedPayload) => {
       const publicKey = encryptionRef.current?.publicKeyExported;
       if (!publicKey) {
+        clearCreateRoomPending();
         showToastRef.current('Room was created, but the local encryption identity is unavailable.', 'error');
         return;
       }
 
+      clearCreateRoomPending();
       setCurrentRoom({
         roomId,
         roomCode,
@@ -434,10 +503,14 @@ function useMessengerController(): UseMessengerControllerResult {
     };
 
     const handleSocketError: ServerToClientEvents['error'] = ({ message }) => {
+      if (createRoomPendingRef.current) {
+        clearCreateRoomPending();
+      }
       showToastRef.current(message, 'error');
     };
 
     const handleRoomClosed: ServerToClientEvents['room-closed'] = () => {
+      setIsLeavingRoom(false);
       setCurrentRoom(null);
       setJoinRequests([]);
       setCurrentPage('home');
@@ -510,6 +583,11 @@ function useMessengerController(): UseMessengerControllerResult {
   };
 
   const handleCreateRoom = (): void => {
+    if (createRoomPendingRef.current) {
+      showToastRef.current('Room creation is already in progress.', 'info');
+      return;
+    }
+
     const encryptionInstance = encryptionRef.current;
     const publicKey = encryptionInstance?.publicKeyExported;
     if (!encryptionInstance || !publicKey || !usernameRef.current) {
@@ -517,6 +595,7 @@ function useMessengerController(): UseMessengerControllerResult {
       return;
     }
 
+    markCreateRoomPending();
     void (async () => {
       try {
         await encryptionInstance.createRoomKey();
@@ -528,6 +607,7 @@ function useMessengerController(): UseMessengerControllerResult {
           wrappedRoomKeyIv,
         });
       } catch (error) {
+        clearCreateRoomPending();
         console.error('Failed to prepare room key for creation:', error);
         showToastRef.current('Could not prepare encrypted room keys.', 'error');
       }
@@ -578,14 +658,33 @@ function useMessengerController(): UseMessengerControllerResult {
     setCurrentRoom((prev) => (prev ? { ...prev, memberKeys } : null));
   };
 
-  const handleLeaveRoom = (): void => {
+  const handleLeaveRoom = async (): Promise<void> => {
     const room = currentRoomRef.current;
-    if (room) {
-      socket.emit('leave-room', { roomId: room.roomId });
+    if (!room || isLeavingRoom) {
+      return;
     }
 
-    setCurrentRoom(null);
-    setCurrentPage('home');
+    setIsLeavingRoom(true);
+
+    try {
+      const response = await leaveRoomOnServer(room.roomId);
+      setJoinRequests([]);
+      setCurrentRoom(null);
+      setCurrentPage('home');
+      showToastRef.current(
+        room.isOwner || response.roomClosed
+          ? 'Room closed and local data removed.'
+          : 'Left room successfully.',
+        'success'
+      );
+    } catch (error) {
+      showToastRef.current(
+        error instanceof Error ? error.message : 'Could not leave the room right now.',
+        'error'
+      );
+    } finally {
+      setIsLeavingRoom(false);
+    }
   };
 
   const toggleAuthMode = (): void => {
@@ -601,7 +700,9 @@ function useMessengerController(): UseMessengerControllerResult {
     currentRoom,
     encryption,
     encryptionStatus,
+    isCreatingRoom,
     isAuthenticated,
+    isLeavingRoom,
     joinRequests,
     socketConnected,
     toast,

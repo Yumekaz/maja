@@ -1,5 +1,7 @@
 # E2E Messenger - Architecture Documentation
 
+> Note: this file contains a deeper architecture walkthrough from earlier iterations of the project. For current runtime guarantees and product claims, prefer `README.md` and `SECURITY.md`.
+
 ## Overview
 
 A real-time end-to-end encrypted messenger with **SQLite persistence** and **message state machine**. The server acts as a relay and never has access to plaintext messages.
@@ -374,4 +376,3 @@ Phone scans QR → Opens URL → Auto-fills room code → Register → Join!
 - [ ] Multi-device support per user
 - [ ] Read receipts with per-recipient tracking
 - [ ] End-to-end encrypted group key rotation
-

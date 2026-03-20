@@ -26,8 +26,9 @@ function getPriority(name) {
 }
 
 function buildCandidateUrls(ip, httpPort, httpsPort, httpsEnabled) {
-  const httpUrl = `http://${ip}:${httpPort}`;
-  const httpsUrl = `https://${ip}:${httpsPort}`;
+  const host = ip.includes(':') ? `[${ip}]` : ip;
+  const httpUrl = `http://${host}:${httpPort}`;
+  const httpsUrl = `https://${host}:${httpsPort}`;
 
   return {
     url: httpsEnabled ? httpsUrl : httpUrl,
@@ -43,19 +44,29 @@ function listNetworkCandidates(httpPort, httpsPort, httpsEnabled) {
 
   for (const [name, entries] of Object.entries(interfaces)) {
     for (const entry of entries || []) {
-      if (entry.family !== 'IPv4' || entry.internal) {
+      const family = entry.family === 4 ? 'IPv4' : entry.family === 6 ? 'IPv6' : entry.family;
+      if (!['IPv4', 'IPv6'].includes(family) || entry.internal) {
         continue;
       }
 
-      if (seenAddresses.has(entry.address)) {
+      const normalizedAddress = String(entry.address || '').split('%')[0];
+      if (!normalizedAddress) {
         continue;
       }
 
-      seenAddresses.add(entry.address);
+      if (normalizedAddress.startsWith('fe80:')) {
+        continue;
+      }
+
+      if (seenAddresses.has(normalizedAddress)) {
+        continue;
+      }
+
+      seenAddresses.add(normalizedAddress);
 
       candidates.push({
         name,
-        ip: entry.address,
+        ip: normalizedAddress,
         priority: getPriority(name),
         skipped: SKIP_PATTERNS.some((pattern) => normalizeName(name).includes(pattern)),
       });

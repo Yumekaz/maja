@@ -1,6 +1,8 @@
 # Security Analysis
 
-This document provides a comprehensive security analysis of the E2E Messenger application, including threat modeling, implemented measures, known limitations, and OWASP Top 10 coverage.
+This document provides a security analysis of the E2E Messenger application, including threat modeling, implemented measures, known limitations, and OWASP Top 10 coverage.
+
+It should be read together with `README.md`. The README and this file are the current source of truth for product claims; some older deep-dive docs in the repo reflect earlier iterations.
 
 ---
 
@@ -10,8 +12,9 @@ This document provides a comprehensive security analysis of the E2E Messenger ap
 ```
 ┌─────────────┐         ┌─────────────┐         ┌─────────────┐
 │   Client A  │◄───────►│   Server    │◄───────►│   Client B  │
-│  (Browser)  │  WSS/   │  (Node.js)  │  WSS/   │  (Browser)  │
-│             │  HTTPS  │  + SQLite   │  HTTPS  │             │
+│  (Browser)  │ HTTP or │  (Node.js)  │ HTTP or │  (Browser)  │
+│             │ HTTPS + │  + SQLite   │ HTTPS + │             │
+│             │ Socket  │             │ Socket  │             │
 └─────────────┘         └─────────────┘         └─────────────┘
        │                       │                       │
        │    E2E Encrypted      │    E2E Encrypted      │
@@ -38,7 +41,8 @@ This document provides a comprehensive security analysis of the E2E Messenger ap
 
 **What they CAN see:**
 - ❌ Message content (E2E encrypted)
-- ❌ Passwords (only hashes transmitted after HTTPS)
+- ⚠️ Passwords if plain HTTP is used on the local network
+- ❌ Password hashes in storage
 - ⚠️ Metadata: IP addresses, timing, message sizes
 - ⚠️ Who is talking to whom (traffic analysis)
 
@@ -53,7 +57,7 @@ This document provides a comprehensive security analysis of the E2E Messenger ap
 **What they CAN see:**
 - ⚠️ Usernames, emails, timestamps
 - ⚠️ Room membership
-- ⚠️ Uploaded files (encrypted at rest recommended for production)
+- ⚠️ Uploaded ciphertext blobs and attachment records
 - ⚠️ Message ciphertext (but not plaintext)
 - ❌ Message content (E2E encrypted)
 - ❌ User passwords (only bcrypt hashes)
@@ -397,8 +401,8 @@ const server = https.createServer({
 }, app);
 ```
 
-### 3. Metadata Not Protected
-**Issue:** Server sees who talks to whom, when
+### 3. Metadata Not Fully Protected
+**Issue:** Server still sees operational metadata such as usernames, room membership, timing, ciphertext sizes, and attachment records
 **Risk:** Traffic analysis possible
 **Mitigation:** Acceptable for this use case
 
@@ -407,15 +411,13 @@ const server = https.createServer({
 - Mix networks
 - Constant-rate traffic padding
 
-### 4. Static File Serving
-**Issue:** `/uploads/*` accessible without auth
-**Risk:** Even with encrypted files, storage can be accessed
-**Mitigation:** 
-- Random filenames (hard to guess)
-- Files are E2E encrypted (attacker gets ciphertext only)
-- Decryption requires room key (never on server)
-
-**Production Fix:** (shown in CHALLENGES.md)
+### 4. Attachment Metadata Visibility
+**Issue:** File content is encrypted, but the server still retains attachment records and ciphertext-level metadata needed for routing/storage
+**Risk:** A server operator can learn that a file was shared, when it was shared, who uploaded it, and the ciphertext size
+**Mitigation:**
+- Original user-facing file metadata is encrypted before upload
+- Decryption still requires the room key, which stays on clients
+- File bytes are stored as ciphertext
 
 ---
 
@@ -443,8 +445,8 @@ db.query('SELECT * FROM users WHERE id = ?', [userId]);
 - Messages (E2E encrypted)
 - Passwords (hashed)
 **Not Protected:**
-- Files at rest
-- Metadata
+- Full metadata privacy
+- Network-level traffic analysis
 
 ### 4. XML External Entities (XXE) ✅
 **Status:** Protected
@@ -499,7 +501,7 @@ db.query('SELECT * FROM users WHERE id = ?', [userId]);
 - [ ] Change JWT secret (use strong random value)
 - [ ] Enable HTTPS
 - [ ] Move JWT to HttpOnly cookies
-- [ ] Implement file encryption at rest
+- [ ] Decide whether host-side attachment storage should add a second layer of at-rest encryption
 - [ ] Add security headers (Helmet.js)
 - [ ] Run `npm audit fix`
 - [ ] Add security event logging

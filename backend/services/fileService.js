@@ -142,6 +142,28 @@ class FileService {
     return db.getRoomAttachments(roomId);
   }
 
+  isAttachmentReferenced(attachmentId) {
+    return db.isAttachmentReferenced(attachmentId);
+  }
+
+  removeAttachment(attachmentId) {
+    const attachment = this.getAttachment(attachmentId);
+
+    if (this.isAttachmentReferenced(attachmentId)) {
+      throw new ValidationError('Attachment is already referenced by a message');
+    }
+
+    db.deleteAttachment(attachmentId);
+    this.deleteFile(attachment.filepath);
+
+    logger.info('Attachment removed', {
+      attachmentId,
+      filepath: attachment.filepath,
+    });
+
+    return attachment;
+  }
+
   /**
    * Delete attachment file from disk
    */

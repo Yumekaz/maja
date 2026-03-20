@@ -11,6 +11,7 @@ function ConfirmModal({
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   isDanger = false,
+  isProcessing = false,
 }: ConfirmModalProps): JSX.Element | null {
   if (!isOpen) return null;
 
@@ -36,6 +37,7 @@ function ConfirmModal({
             type="button"
             className="btn btn-secondary"
             onClick={onCancel}
+            disabled={isProcessing}
           >
             {cancelText}
           </button>
@@ -43,6 +45,7 @@ function ConfirmModal({
             type="button"
             className={`btn ${isDanger ? 'btn-danger' : 'btn-primary'}`}
             onClick={onConfirm}
+            disabled={isProcessing}
           >
             {confirmText}
           </button>

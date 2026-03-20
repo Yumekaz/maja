@@ -15,5 +15,6 @@ router.use(authenticateToken);
 router.post('/upload', fileController.upload.bind(fileController));
 router.get('/:id', fileController.getFile.bind(fileController));
 router.get('/room/:roomId', fileController.getRoomFiles.bind(fileController));
+router.delete('/:id', fileController.deleteAttachment.bind(fileController));
 
 module.exports = router;

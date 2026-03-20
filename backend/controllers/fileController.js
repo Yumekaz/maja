@@ -11,6 +11,8 @@ const roomService = require('../services/roomService');
 const logger = require('../utils/logger');
 const { ValidationError, AuthorizationError, NotFoundError } = require('../utils/errors');
 
+const UPLOAD_DRAIN_LIMIT_BYTES = 64 * 1024;
+
 class FileController {
   /**
    * POST /api/files/upload
@@ -23,19 +25,35 @@ class FileController {
         return;
       }
 
+      let drainedBytes = 0;
       let settled = false;
+      const cleanup = () => {
+        req.off('data', handleData);
+        req.off('end', finalize);
+        req.off('close', finalize);
+        req.off('error', finalize);
+      };
+
       const finalize = () => {
         if (settled) {
           return;
         }
 
         settled = true;
-        req.off('end', finalize);
-        req.off('close', finalize);
-        req.off('error', finalize);
+        cleanup();
         next(error);
       };
 
+      const handleData = (chunk) => {
+        drainedBytes += chunk.length;
+        if (drainedBytes > UPLOAD_DRAIN_LIMIT_BYTES && !req.destroyed) {
+          settled = true;
+          cleanup();
+          req.destroy();
+        }
+      };
+
+      req.on('data', handleData);
       req.on('end', finalize);
       req.on('close', finalize);
       req.on('error', finalize);
@@ -165,6 +183,35 @@ class FileController {
           metadata: a.metadata || null,
         })),
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/files/:id
+   * Remove an uploaded attachment before it is referenced by a message
+   */
+  async deleteAttachment(req, res, next) {
+    try {
+      const attachmentId = parseInt(req.params.id, 10);
+      if (Number.isNaN(attachmentId)) {
+        throw new ValidationError('Valid attachment ID is required');
+      }
+
+      const attachment = fileService.getAttachment(attachmentId);
+
+      if (!roomService.isMember(attachment.room_id, req.user.username)) {
+        throw new AuthorizationError('Not a room member');
+      }
+
+      if (attachment.username !== req.user.username) {
+        throw new AuthorizationError('Only the uploader can remove this attachment');
+      }
+
+      fileService.removeAttachment(attachmentId);
+
+      res.json({ message: 'Attachment deleted' });
     } catch (error) {
       next(error);
     }

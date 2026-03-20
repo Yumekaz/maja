@@ -6,7 +6,7 @@
 const db = require('../database/db');
 const config = require('../config');
 const logger = require('../utils/logger');
-const { authenticateSocket } = require('../middleware/auth');
+const { authenticateSocket, refreshSocketAuth } = require('../middleware/auth');
 const authService = require('../services/authService');
 const createMessageHandler = require('./handlers/messageHandler');
 const createRoomHandler = require('./handlers/roomHandler');
@@ -62,21 +62,47 @@ function setupSocketHandlers(io) {
   io.on('connection', (socket) => {
     logger.debug('Socket connected', { socketId: socket.id });
 
-    const rejectExpiredAuth = () => {
-      if (!socket.authInvalid) {
-        return false;
+    const ensureSocketSession = (callback) => {
+      const authState = refreshSocketAuth(socket);
+      if (authState.valid) {
+        return true;
       }
 
       socket.emit('auth-expired');
+      if (typeof callback === 'function') {
+        callback({ ok: false, message: 'Session expired' });
+      }
       logger.warn('Rejected socket action due to invalid auth token', {
         socketId: socket.id,
       });
-      return true;
+      return false;
     };
 
     // Register user
-    socket.on('register', ({ username, publicKey }) => {
-      if (rejectExpiredAuth()) {
+    socket.on('register', ({ username: requestedUsername, publicKey } = {}) => {
+      if (!ensureSocketSession()) {
+        return;
+      }
+
+      const tokenUsername = socket.user?.username || null;
+      if (!publicKey) {
+        socket.emit('error', { message: 'Public key required' });
+        return;
+      }
+
+      if (tokenUsername && requestedUsername && requestedUsername !== tokenUsername) {
+        socket.emit('error', { message: 'Authenticated session username mismatch' });
+        logger.warn('Rejected socket registration with mismatched JWT subject', {
+          socketId: socket.id,
+          tokenUsername,
+          requestedUsername,
+        });
+        return;
+      }
+
+      const username = tokenUsername || requestedUsername;
+      if (!username) {
+        socket.emit('error', { message: 'Username required' });
         return;
       }
 
@@ -136,7 +162,7 @@ function setupSocketHandlers(io) {
      * Allows legacy users to upload files via HTTP
      */
     socket.on('request-upload-token', () => {
-      if (rejectExpiredAuth()) {
+      if (!ensureSocketSession()) {
         return;
       }
 
@@ -154,8 +180,8 @@ function setupSocketHandlers(io) {
     });
 
     // Setup handlers
-    createRoomHandler(io, socket, state);
-    createMessageHandler(io, socket, state);
+    createRoomHandler(io, socket, state, ensureSocketSession);
+    createMessageHandler(io, socket, state, ensureSocketSession);
 
     // Handle disconnect
     socket.on('disconnect', () => {

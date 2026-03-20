@@ -33,6 +33,8 @@ function App(): JSX.Element {
     handleLogout,
     handleRegister,
     handleUpdateRoomKey,
+    isCreatingRoom,
+    isLeavingRoom,
     toggleAuthMode,
   } = useMessengerController();
 
@@ -103,6 +105,7 @@ function App(): JSX.Element {
           onCreateRoom={handleCreateRoom}
           onJoinRoom={handleJoinRoom}
           socketConnected={socketConnected}
+          creatingRoom={isCreatingRoom}
         />
       )}
 
@@ -117,10 +120,11 @@ function App(): JSX.Element {
           onLeave={handleLeaveRoom}
           roomType={currentRoom.roomType}
           socketConnected={socketConnected}
+          leavingRoom={isLeavingRoom}
         />
       )}
 
-      {joinRequests.length > 0 && (
+      {currentPage === 'room' && joinRequests.length > 0 && (
         <JoinRequestModal
           requests={joinRequests}
           onApprove={handleApproveJoin}

@@ -5,7 +5,9 @@
  */
 
 const request = require('supertest');
+const jwt = require('jsonwebtoken');
 const { io } = require('socket.io-client');
+const config = require('../backend/config');
 const { getApiUrl } = require('./helpers/api');
 const { buildIdentity } = require('./helpers/identity');
 
@@ -45,6 +47,10 @@ function waitForSocketConnection(socket, timeout = 5000) {
       reject(error);
     });
   });
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 describe('E2E: Complete User Flow', () => {
@@ -123,26 +129,6 @@ describe('E2E: Complete User Flow', () => {
   });
 
   describe('Step 3: Room Creation', () => {
-    it('User A should create a room via API', async () => {
-      const res = await request(getApiUrl())
-        .post('/api/rooms')
-        .set('Authorization', `Bearer ${userA.token}`);
-
-      expect(res.status).toBe(201);
-      expect(res.body).toHaveProperty('room');
-      expect(res.body.room).toHaveProperty('roomCode');
-      expect(res.body.room).toHaveProperty('roomId');
-
-      roomCode = res.body.room.roomCode;
-      roomId = res.body.room.roomId;
-    });
-
-    it('Room code should be 6 characters', () => {
-      expect(roomCode).toMatch(/^[A-Z0-9]{6}$/);
-    });
-  });
-
-  describe('Step 4: Room Joining', () => {
     it('User A should register with socket and public key', async () => {
       expect(userA.socket).toBeTruthy();
       expect(userA.username).toBeTruthy();
@@ -159,6 +145,31 @@ describe('E2E: Complete User Flow', () => {
       expect(result).toHaveProperty('username', userA.username);
     });
 
+    it('User A should create a room via socket with wrapped room key material', async () => {
+      expect(userA.socket).toBeTruthy();
+
+      const roomCreatedPromise = waitForEvent(userA.socket, 'room-created');
+
+      userA.socket.emit('create-room', {
+        wrappedRoomKey: 'mock-wrapped-room-key-owner',
+        wrappedRoomKeyIv: 'mock-wrapped-room-iv-owner',
+      });
+
+      const room = await roomCreatedPromise;
+      expect(room).toHaveProperty('roomCode');
+      expect(room).toHaveProperty('roomId');
+
+      roomCode = room.roomCode;
+      roomId = room.roomId;
+    });
+
+    it('Room code should be 6 characters', () => {
+      expect(roomCode).toMatch(/^[A-Z0-9]{6}$/);
+    });
+  });
+
+  describe('Step 4: Room Joining', () => {
+
     it('User A should join their room', async () => {
       expect(userA.socket).toBeTruthy();
       expect(roomId).toBeTruthy();
@@ -169,22 +180,6 @@ describe('E2E: Complete User Flow', () => {
       const roomData = await roomDataPromise;
       expect(roomData).toHaveProperty('members');
       expect(roomData.members).toContain(userA.username);
-    });
-
-    it('User A should persist wrapped room key material for reconnects', async () => {
-      expect(userA.socket).toBeTruthy();
-
-      userA.socket.emit('sync-room-key', {
-        roomId,
-        wrappedRoomKey: 'mock-wrapped-room-key-owner',
-        wrappedRoomKeyIv: 'mock-wrapped-room-iv-owner',
-        keySenderUsername: userA.username,
-      });
-
-      const roomDataPromise = waitForEvent(userA.socket, 'room-data');
-      userA.socket.emit('join-room', { roomId });
-
-      const roomData = await roomDataPromise;
       expect(roomData).toHaveProperty('wrappedRoomKey', 'mock-wrapped-room-key-owner');
       expect(roomData).toHaveProperty('wrappedRoomKeyIv', 'mock-wrapped-room-iv-owner');
       expect(roomData).toHaveProperty('keySenderUsername', userA.username);
@@ -292,6 +287,75 @@ describe('E2E: Security Flow', () => {
       await expect(authExpiredPromise).resolves.toBeUndefined();
     } finally {
       staleSocket.disconnect();
+    }
+  });
+
+  it('should reject socket registration that does not match the JWT subject', async () => {
+    const authRes = await request(getApiUrl())
+      .post('/api/auth/register')
+      .send({
+        ...buildIdentity('subjectcheck', 'test.com'),
+        password: 'TestPass123',
+      });
+
+    expect(authRes.status).toBe(201);
+
+    const spoofSocket = createAuthenticatedSocket(authRes.body.accessToken);
+    spoofSocket.connect();
+
+    try {
+      await waitForSocketConnection(spoofSocket);
+
+      const errorPromise = waitForEvent(spoofSocket, 'error');
+      spoofSocket.emit('register', {
+        username: `spoof_${Date.now()}`,
+        publicKey: `mock-public-key-${Date.now()}`,
+      });
+
+      await expect(errorPromise).resolves.toEqual(
+        expect.objectContaining({ message: 'Authenticated session username mismatch' })
+      );
+    } finally {
+      spoofSocket.disconnect();
+    }
+  });
+
+  it('should expire socket actions once the access token has aged out', async () => {
+    const authRes = await request(getApiUrl())
+      .post('/api/auth/register')
+      .send({
+        ...buildIdentity('shortsocket', 'test.com'),
+        password: 'TestPass123',
+      });
+
+    expect(authRes.status).toBe(201);
+
+    const shortLivedToken = jwt.sign(
+      {
+        userId: authRes.body.user.id,
+        username: authRes.body.user.username,
+        type: 'access',
+      },
+      config.jwt.secret,
+      { expiresIn: '1s' }
+    );
+
+    const expiringSocket = createAuthenticatedSocket(shortLivedToken);
+    expiringSocket.connect();
+
+    try {
+      await waitForSocketConnection(expiringSocket);
+      await wait(1500);
+
+      const authExpiredPromise = waitForEvent(expiringSocket, 'auth-expired');
+      expiringSocket.emit('register', {
+        username: authRes.body.user.username,
+        publicKey: `mock-expiring-key-${Date.now()}`,
+      });
+
+      await expect(authExpiredPromise).resolves.toBeUndefined();
+    } finally {
+      expiringSocket.disconnect();
     }
   });
 

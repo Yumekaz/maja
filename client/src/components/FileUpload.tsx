@@ -37,10 +37,10 @@ function FileUpload({ roomId, onFileUploaded, disabled = false, encryptFile }: E
 
       // Upload file (encrypted or plain)
       const result = await fileService.uploadFile(roomId, file, uploadData);
-      setProgress(100);
+      setProgress(80);
 
       // Notify parent
-      onFileUploaded(
+      await onFileUploaded(
         uploadData
           ? {
               ...result.attachment,
@@ -50,6 +50,7 @@ function FileUpload({ roomId, onFileUploaded, disabled = false, encryptFile }: E
             }
           : result.attachment
       );
+      setProgress(100);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Upload failed');
     } finally {

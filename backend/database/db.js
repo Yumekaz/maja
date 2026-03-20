@@ -511,6 +511,14 @@ function getRoomAttachments(roomId) {
   return getAll('SELECT * FROM attachments WHERE room_id = ? ORDER BY created_at DESC', [roomId]);
 }
 
+function isAttachmentReferenced(id) {
+  return getOne('SELECT 1 FROM messages WHERE attachment_id = ? LIMIT 1', [id]) !== undefined;
+}
+
+function deleteAttachment(id) {
+  return runQuery('DELETE FROM attachments WHERE id = ?', [id]);
+}
+
 // ==================== STATISTICS ====================
 
 function getStats() {
@@ -588,6 +596,8 @@ module.exports = {
   createAttachment,
   getAttachment,
   getRoomAttachments,
+  isAttachmentReferenced,
+  deleteAttachment,
 
   // Utilities
   getStats,

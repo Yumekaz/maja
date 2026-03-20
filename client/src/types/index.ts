@@ -305,6 +305,7 @@ export interface HomePageProps {
   onCreateRoom: () => void;
   onJoinRoom: (roomCode: string) => void;
   socketConnected: boolean;
+  creatingRoom: boolean;
 }
 
 export interface RoomPageProps {
@@ -314,14 +315,15 @@ export interface RoomPageProps {
   isOwner: boolean;
   encryption: RoomEncryptionInterface;
   onUpdateRoomKey: (memberKeys: Record<string, string>) => Promise<void>;
-  onLeave: () => void;
+  onLeave: () => Promise<void>;
   roomType?: RoomType;
   socketConnected: boolean;
+  leavingRoom: boolean;
 }
 
 export interface FileUploadProps {
   roomId: string;
-  onFileUploaded: (attachment: Attachment) => void;
+  onFileUploaded: (attachment: Attachment) => Promise<void> | void;
   disabled?: boolean;
 }
 
@@ -345,6 +347,7 @@ export interface ConfirmModalProps {
   confirmText?: string;
   cancelText?: string;
   isDanger?: boolean;
+  isProcessing?: boolean;
 }
 
 export interface JoinRequestModalProps {

@@ -111,26 +111,39 @@ function optionalAuth(req, res, next) {
  * Authenticate Socket.IO connection
  */
 function authenticateSocket(socket, next) {
-  const token = socket.handshake.auth.token;
+  refreshSocketAuth(socket);
+  next();
+}
+
+function refreshSocketAuth(socket) {
+  const token = socket.handshake.auth?.token;
   socket.authInvalid = false;
 
   if (!token) {
-    // Allow unauthenticated connections for backward compatibility
-    // They'll use the legacy username-only flow
     socket.user = null;
-    return next();
+    return {
+      valid: true,
+      authenticated: false,
+      user: null,
+    };
   }
 
   try {
     const decoded = authService.verifyAccessToken(token);
     socket.user = decoded;
-    next();
+    return {
+      valid: true,
+      authenticated: true,
+      user: decoded,
+    };
   } catch (error) {
-    // Allow the socket to connect so the client can refresh or clear state,
-    // but do not silently treat a bad auth token as an intentional legacy session.
     socket.user = null;
     socket.authInvalid = true;
-    next();
+    return {
+      valid: false,
+      authenticated: true,
+      user: null,
+    };
   }
 }
 
@@ -138,4 +151,5 @@ module.exports = {
   authenticateToken,
   optionalAuth,
   authenticateSocket,
+  refreshSocketAuth,
 };

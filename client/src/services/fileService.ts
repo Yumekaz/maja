@@ -199,6 +199,39 @@ class FileService {
   }
 
   /**
+   * Remove an uploaded attachment that never became a chat message
+   */
+  async discardUnsentAttachment(attachmentId: number): Promise<void> {
+    const token = await this.getAuthToken();
+
+    let response = await fetch(`${API_BASE}/${attachmentId}`, {
+      method: 'DELETE',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    if (response.status === 401 && socket.connected) {
+      try {
+        const legacyToken = await this.requestLegacyToken();
+        response = await fetch(`${API_BASE}/${attachmentId}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${legacyToken}`,
+          },
+        });
+      } catch (e) {
+        console.warn('Legacy delete retry failed:', e);
+      }
+    }
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Could not discard uploaded attachment');
+    }
+  }
+
+  /**
    * Format file size for display
    */
   formatFileSize(bytes: number): string {

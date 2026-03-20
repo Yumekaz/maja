@@ -9,13 +9,17 @@ const roomService = require('../../services/roomService');
 const { serializeSocketMessage } = require('../../utils/messagePayloads');
 const { buildMemberSnapshot, emitMembersUpdate } = require('../../utils/roomMembers');
 
-function createRoomHandler(io, socket, state) {
+function createRoomHandler(io, socket, state, ensureSocketSession) {
   const { users, joinRequests, socketToRooms } = state;
 
   /**
    * Create room
    */
   socket.on('create-room', ({ wrappedRoomKey, wrappedRoomKeyIv } = {}) => {
+    if (!ensureSocketSession()) {
+      return;
+    }
+
     const user = users.get(socket.id);
     if (!user) {
       socket.emit('error', { message: 'Not registered' });
@@ -45,6 +49,10 @@ function createRoomHandler(io, socket, state) {
     { roomId, wrappedRoomKey, wrappedRoomKeyIv, keySenderUsername },
     callback = () => {}
   ) => {
+    if (!ensureSocketSession(callback)) {
+      return;
+    }
+
     const user = users.get(socket.id);
     if (!user) {
       socket.emit('error', { message: 'Not registered' });
@@ -86,6 +94,10 @@ function createRoomHandler(io, socket, state) {
    * Request to join room
    */
   socket.on('request-join', ({ roomCode }) => {
+    if (!ensureSocketSession()) {
+      return;
+    }
+
     const user = users.get(socket.id);
 
     if (!user) {
@@ -184,6 +196,10 @@ function createRoomHandler(io, socket, state) {
     { requestId, wrappedRoomKey, wrappedRoomKeyIv, keySenderUsername },
     callback = () => {}
   ) => {
+    if (!ensureSocketSession(callback)) {
+      return;
+    }
+
     const request = joinRequests.get(requestId);
     if (!request) {
       callback({ ok: false, message: 'Join request expired' });
@@ -260,6 +276,10 @@ function createRoomHandler(io, socket, state) {
    * Deny join request
    */
   socket.on('deny-join', ({ requestId }) => {
+    if (!ensureSocketSession()) {
+      return;
+    }
+
     const request = joinRequests.get(requestId);
     if (!request) return;
 
@@ -283,6 +303,10 @@ function createRoomHandler(io, socket, state) {
    * Join existing room (reconnection)
    */
   socket.on('join-room', ({ roomId }) => {
+    if (!ensureSocketSession()) {
+      return;
+    }
+
     const user = users.get(socket.id);
     if (!user) {
       socket.emit('error', { message: 'Not registered' });
@@ -344,16 +368,48 @@ function createRoomHandler(io, socket, state) {
   /**
    * Leave room
    */
-  socket.on('leave-room', ({ roomId }) => {
+  socket.on('leave-room', ({ roomId }, callback = () => {}) => {
+    if (!ensureSocketSession(callback)) {
+      return;
+    }
+
     const user = users.get(socket.id);
-    if (!user) return;
+    if (!user) {
+      callback({ ok: false, message: 'Not registered' });
+      return;
+    }
 
     // Check room exists
     const dbRoom = db.getRoomById(roomId);
-    if (!dbRoom) return;
+    if (!dbRoom) {
+      callback({ ok: false, message: 'Room not found' });
+      return;
+    }
 
     socket.leave(roomId);
     socketToRooms.get(socket.id)?.delete(roomId);
+
+    // Delete room if owner leaves
+    if (dbRoom.owner_username === user.username) {
+      for (const [requestId, request] of joinRequests.entries()) {
+        if (request.roomId !== roomId) {
+          continue;
+        }
+
+        const requesterSocket = io.sockets.sockets.get(request.socketId);
+        if (requesterSocket) {
+          requesterSocket.emit('error', { message: 'Room was closed by owner' });
+        }
+
+        joinRequests.delete(requestId);
+      }
+
+      roomService.delete(roomId, user.username);
+      io.to(roomId).emit('room-closed');
+      logger.info('Room closed', { roomId });
+      callback({ ok: true, roomClosed: true });
+      return;
+    }
 
     // Remove from database
     db.removeRoomMember(roomId, user.username);
@@ -363,13 +419,7 @@ function createRoomHandler(io, socket, state) {
 
     emitMembersUpdate(io, roomId);
 
-    // Delete room if owner leaves
-    if (dbRoom.owner_username === user.username) {
-      db.deleteRoom(roomId);
-      io.to(roomId).emit('room-closed');
-      logger.info('Room closed', { roomId });
-    }
-
+    callback({ ok: true, roomClosed: false });
     logger.info('User left room', { username: user.username, roomId });
   });
 }

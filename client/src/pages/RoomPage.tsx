@@ -14,7 +14,8 @@ import type {
   Message,
   Attachment,
   EncryptedMessage,
-  NetworkInfoResponse
+  NetworkInfoResponse,
+  SendEncryptedMessagePayload,
 } from '../types';
 
 interface EncryptedAttachmentData extends Attachment {
@@ -48,6 +49,7 @@ function RoomPage({
   onLeave,
   roomType = 'legacy',
   socketConnected,
+  leavingRoom,
 }: RoomPageProps): JSX.Element {
   const [messages, setMessages] = useState<Message[]>([]);
   const [members, setMembers] = useState<string[]>([]);
@@ -85,6 +87,62 @@ function RoomPage({
     prevMessagesLengthRef.current = 0;
     userHasScrolledRef.current = false;
     clearTypingTimeouts();
+  }
+
+  function markRoomCodeCopied(): void {
+    setCopiedRoomCode(true);
+
+    if (copyResetTimerRef.current !== null) {
+      clearTimeout(copyResetTimerRef.current);
+    }
+
+    copyResetTimerRef.current = window.setTimeout(() => {
+      setCopiedRoomCode(false);
+      copyResetTimerRef.current = null;
+    }, 1400);
+  }
+
+  async function loadNetworkInfo(): Promise<void> {
+    try {
+      const response = await fetch('/api/network-info');
+      const data = await response.json() as NetworkInfoResponse;
+      setServerUrl(data.url || window.location.origin);
+      setNetworkCandidates(data.candidates || []);
+    } catch {
+      setServerUrl(window.location.origin);
+      setNetworkCandidates([]);
+    }
+  }
+
+  async function emitEncryptedMessage(
+    payload: SendEncryptedMessagePayload
+  ): Promise<{ messageId?: string }> {
+    return new Promise((resolve, reject) => {
+      (socket.timeout(10000) as any).emit(
+        'send-encrypted-message',
+        payload,
+        (
+          error: Error | null,
+          response?: {
+            ok?: boolean;
+            message?: string;
+            messageId?: string;
+          }
+        ) => {
+          if (error) {
+            reject(new Error('Message send timed out'));
+            return;
+          }
+
+          if (!response?.ok) {
+            reject(new Error(response?.message || 'Message send failed'));
+            return;
+          }
+
+          resolve({ messageId: response.messageId });
+        }
+      );
+    });
   }
 
   async function resolveAttachmentDownload(
@@ -153,23 +211,37 @@ function RoomPage({
   }
 
   function copyRoomCode(): void {
+    const fallbackCopy = () => {
+      const textArea = document.createElement('textarea');
+      textArea.value = roomCode;
+      textArea.setAttribute('readonly', 'true');
+      textArea.style.position = 'absolute';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+
+      try {
+        const copied = document.execCommand('copy');
+        if (copied) {
+          markRoomCodeCopied();
+        }
+      } catch (error) {
+        console.error('Fallback copy failed:', error);
+      } finally {
+        document.body.removeChild(textArea);
+      }
+    };
+
     if (!navigator.clipboard?.writeText) {
+      fallbackCopy();
       return;
     }
 
     void navigator.clipboard.writeText(roomCode).then(() => {
-      setCopiedRoomCode(true);
-
-      if (copyResetTimerRef.current !== null) {
-        clearTimeout(copyResetTimerRef.current);
-      }
-
-      copyResetTimerRef.current = window.setTimeout(() => {
-        setCopiedRoomCode(false);
-        copyResetTimerRef.current = null;
-      }, 1400);
+      markRoomCodeCopied();
     }).catch((error) => {
       console.error('Failed to copy room code:', error);
+      fallbackCopy();
     });
   }
 
@@ -179,7 +251,7 @@ function RoomPage({
 
   function handleConfirmLeave(): void {
     setShowLeaveConfirm(false);
-    onLeave();
+    void onLeave();
   }
 
   function handleCancelLeave(): void {
@@ -219,7 +291,7 @@ function RoomPage({
     try {
       const { encryptedData, iv } = await encryption.encrypt(inputText.trim());
 
-      socket.emit('send-encrypted-message', {
+      await emitEncryptedMessage({
         roomId,
         encryptedData,
         iv,
@@ -229,6 +301,11 @@ function RoomPage({
       setInputText('');
     } catch (error) {
       console.error('Encryption failed:', error);
+      setMessages(prev => [...prev, {
+        type: 'system',
+        text: 'Message failed to send. Try again.',
+        timestamp: Date.now(),
+      } as SystemMessage]);
     }
   }
 
@@ -241,7 +318,7 @@ function RoomPage({
       const messageText = `Shared encrypted file: ${attachment.filename}`;
       const { encryptedData, iv } = await encryption.encrypt(messageText);
 
-      socket.emit('send-encrypted-message', {
+      await emitEncryptedMessage({
         roomId,
         encryptedData,
         iv,
@@ -249,7 +326,15 @@ function RoomPage({
         attachmentId: attachment.id
       });
     } catch (error) {
+      try {
+        await fileService.discardUnsentAttachment(attachment.id);
+      } catch (cleanupError) {
+        console.error('Failed to discard orphaned upload:', cleanupError);
+      }
       console.error('Failed to send file message:', error);
+      throw error instanceof Error
+        ? error
+        : new Error('The file uploaded, but its chat message could not be delivered.');
     }
   }
 
@@ -274,21 +359,26 @@ function RoomPage({
       } catch (error) {
         console.error('Room setup failed:', error);
       }
-
-      fetch('/api/network-info')
-        .then(res => res.json())
-        .then((data: NetworkInfoResponse) => {
-          setServerUrl(data.url || window.location.origin);
-          setNetworkCandidates(data.candidates || []);
-        })
-        .catch(() => {
-          setServerUrl(window.location.origin);
-          setNetworkCandidates([]);
-        });
     };
 
-    initRoomMetadata();
+    void initRoomMetadata();
+    void loadNetworkInfo();
   }, [encryption]);
+
+  useEffect(() => {
+    if (!showRoomInfo) {
+      return undefined;
+    }
+
+    void loadNetworkInfo();
+    const refreshTimer = window.setInterval(() => {
+      void loadNetworkInfo();
+    }, 30000);
+
+    return () => {
+      clearInterval(refreshTimer);
+    };
+  }, [showRoomInfo]);
 
   useEffect(() => {
     let active = true;
@@ -501,7 +591,7 @@ function RoomPage({
       <div className="room-shell">
         <header className="room-header">
           <div className="room-info-left">
-            <button className="btn-back" onClick={handleLeaveClick} aria-label="Leave room">
+            <button className="btn-back" onClick={handleLeaveClick} aria-label="Leave room" disabled={leavingRoom}>
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -555,6 +645,7 @@ function RoomPage({
               onClick={handleLeaveClick}
               title={isOwner ? 'Close Room (deletes all data)' : 'Leave Room'}
               aria-label={isOwner ? 'Close room' : 'Leave room'}
+              disabled={leavingRoom}
             >
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M9 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -608,7 +699,10 @@ function RoomPage({
               </div>
               {networkCandidates.length > 0 && (
                 <div className="info-row room-network-row">
-                  <span className="info-label">Local addresses</span>
+                  <div className="info-label">Local addresses</div>
+                  <button className="copy-btn" type="button" onClick={() => void loadNetworkInfo()}>
+                    Refresh
+                  </button>
                   <div className="room-network-list">
                     {networkCandidates.map((candidate) => (
                       <div key={`${candidate.name}-${candidate.ip}`} className="room-network-card">
@@ -732,7 +826,7 @@ function RoomPage({
                         <span className="member-name">{member}</span>
                         {member === username && <span className="you-badge">You</span>}
                       </div>
-                      <span className="member-status-icon" title="Encryption verified">
+                      <span className="member-status-icon" title="Room key shared">
                         <BrandGlyph className="member-status-glyph" framed={false} />
                       </span>
                     </li>
@@ -749,6 +843,7 @@ function RoomPage({
               roomId={roomId}
               onFileUploaded={handleFileUploaded}
               encryptFile={handleEncryptFile}
+              disabled={leavingRoom}
             />
             <div className="input-container">
               <input
@@ -761,7 +856,7 @@ function RoomPage({
                 maxLength={4000}
               />
             </div>
-            <button type="submit" className="btn btn-send" disabled={!inputText.trim()} aria-label="Send message">
+            <button type="submit" className="btn btn-send" disabled={!inputText.trim() || leavingRoom} aria-label="Send message">
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -777,12 +872,13 @@ function RoomPage({
       <ConfirmModal
         isOpen={showLeaveConfirm}
         title={isOwner ? 'Close room?' : 'Leave room?'}
-        message={isOwner
-          ? 'Leaving will permanently delete the room, messages, and membership state.'
+          message={isOwner
+          ? 'Leaving will permanently delete the room, encrypted messages, attachments, and membership state.'
           : 'Are you sure you want to leave this room?'
         }
         details={isOwner ? [
           'All chat messages',
+          'All uploaded attachments',
           'All room members',
           'The entire room'
         ] : null}
@@ -791,6 +887,7 @@ function RoomPage({
         confirmText={isOwner ? 'Close room' : 'Leave'}
         cancelText="Cancel"
         isDanger={isOwner}
+        isProcessing={leavingRoom}
       />
     </div>
   );

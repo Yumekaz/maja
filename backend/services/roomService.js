@@ -5,6 +5,7 @@
 
 const crypto = require('crypto');
 const db = require('../database/db');
+const fileService = require('./fileService');
 const logger = require('../utils/logger');
 const { NotFoundError, AuthorizationError, ValidationError } = require('../utils/errors');
 
@@ -133,9 +134,11 @@ class RoomService {
       throw new AuthorizationError('Only room owner can delete the room');
     }
 
+    const attachments = db.getRoomAttachments(roomId);
+    attachments.forEach((attachment) => fileService.deleteFile(attachment.filepath));
     db.deleteRoom(roomId);
 
-    logger.info('Room deleted', { roomId, owner: username });
+    logger.info('Room deleted', { roomId, owner: username, deletedAttachments: attachments.length });
 
     return { success: true };
   }

@@ -6,6 +6,7 @@
 const request = require('supertest');
 const path = require('path');
 const fs = require('fs');
+const db = require('../backend/database/db');
 const { getApiUrl } = require('./helpers/api');
 const { buildIdentity } = require('./helpers/identity');
 
@@ -272,5 +273,81 @@ describe('File Validation', () => {
         fs.unlinkSync(invalidFilePath);
       }
     }
+  });
+});
+
+describe('Attachment cleanup', () => {
+  it('should let the uploader discard an unsent attachment and remove it from disk', async () => {
+    const regRes = await request(getApiUrl())
+      .post('/api/auth/register')
+      .send(buildIdentity('discardfile'));
+
+    expect(regRes.status).toBe(201);
+
+    const roomRes = await request(getApiUrl())
+      .post('/api/rooms')
+      .set('Authorization', `Bearer ${regRes.body.accessToken}`);
+
+    expect(roomRes.status).toBe(201);
+
+    const uploadRes = await request(getApiUrl())
+      .post('/api/files/upload')
+      .set('Authorization', `Bearer ${regRes.body.accessToken}`)
+      .field('roomId', roomRes.body.room.roomId)
+      .attach('file', Buffer.from('discard this encrypted upload'), 'discard.txt');
+
+    expect(uploadRes.status).toBe(201);
+
+    const attachmentId = uploadRes.body.attachment.id;
+    const attachmentRecord = db.getAttachment(attachmentId);
+    const { upload } = require('../backend/config');
+    const attachmentPath = path.resolve(upload.directory, attachmentRecord.filepath);
+
+    expect(fs.existsSync(attachmentPath)).toBe(true);
+
+    const deleteRes = await request(getApiUrl())
+      .delete(`/api/files/${attachmentId}`)
+      .set('Authorization', `Bearer ${regRes.body.accessToken}`);
+
+    expect(deleteRes.status).toBe(200);
+    expect(db.getAttachment(attachmentId)).toBeUndefined();
+    expect(fs.existsSync(attachmentPath)).toBe(false);
+  });
+
+  it('should delete uploaded files from disk when a room is deleted', async () => {
+    const regRes = await request(getApiUrl())
+      .post('/api/auth/register')
+      .send(buildIdentity('roomcleanup'));
+
+    expect(regRes.status).toBe(201);
+
+    const roomRes = await request(getApiUrl())
+      .post('/api/rooms')
+      .set('Authorization', `Bearer ${regRes.body.accessToken}`);
+
+    expect(roomRes.status).toBe(201);
+
+    const uploadRes = await request(getApiUrl())
+      .post('/api/files/upload')
+      .set('Authorization', `Bearer ${regRes.body.accessToken}`)
+      .field('roomId', roomRes.body.room.roomId)
+      .attach('file', Buffer.from('delete this room attachment'), 'cleanup.txt');
+
+    expect(uploadRes.status).toBe(201);
+
+    const attachmentId = uploadRes.body.attachment.id;
+    const attachmentRecord = db.getAttachment(attachmentId);
+    const { upload } = require('../backend/config');
+    const attachmentPath = path.resolve(upload.directory, attachmentRecord.filepath);
+
+    expect(fs.existsSync(attachmentPath)).toBe(true);
+
+    const deleteRoomRes = await request(getApiUrl())
+      .delete(`/api/rooms/${roomRes.body.room.roomId}`)
+      .set('Authorization', `Bearer ${regRes.body.accessToken}`);
+
+    expect(deleteRoomRes.status).toBe(200);
+    expect(db.getAttachment(attachmentId)).toBeUndefined();
+    expect(fs.existsSync(attachmentPath)).toBe(false);
   });
 });

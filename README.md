@@ -1,177 +1,132 @@
-# MAJA - Internet-Free Local Messenger
+# MAJA
 
-Private group messaging over the **same Wi-Fi, hotspot, or LAN** with **end-to-end encryption**, **owner-approved room access**, and **no internet requirement**.
+An internet-free messenger for same Wi-Fi, hotspot, or LAN groups, with owner-approved rooms and client-side encrypted messages and file contents.
 
-![Version](https://img.shields.io/badge/version-3.0.0-blue)
-![Encryption](https://img.shields.io/badge/Encryption-AES--256--GCM-00d4aa)
-![Auth](https://img.shields.io/badge/Auth-JWT%20%2B%20bcrypt-green)
-![Tests](https://img.shields.io/badge/Tests-95%20Passing-brightgreen)
-![Storage](https://img.shields.io/badge/Storage-SQLite-blue)
+## What it is
 
----
+MAJA is built for private communication on a shared local network when the internet is unavailable, unwanted, or intentionally avoided.
 
-## 📚 Documentation
+Core idea:
+- one device hosts the app on the local network
+- other devices join through that local address or QR code
+- the room owner approves every participant
+- messages are encrypted in the browser before they are relayed
 
-| Document | Description |
-|----------|-------------|
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | System design, data flow, component interactions |
-| [CHALLENGES.md](./CHALLENGES.md) | Real problems I solved and what I learned |
-| [SECURITY.md](./SECURITY.md) | Threat model, security measures, OWASP coverage |
-| [PERFORMANCE.md](./PERFORMANCE.md) | Benchmarks, bottlenecks, scalability analysis |
+## What the app currently guarantees
 
----
+- No internet is required. Traffic stays on the same Wi-Fi, hotspot, or LAN.
+- The server enforces a local-network boundary for both HTTP and Socket.IO traffic.
+- Authenticated rooms are bound to the signed-in user identity from the JWT, not a client-claimed username.
+- Messages are encrypted client-side with AES-GCM after room key exchange.
+- File contents and the user-visible attachment metadata needed for decryption are encrypted before upload.
+- If the room owner closes a room, the room state, messages, members, and uploaded ciphertext files are removed.
 
-## ✨ Features
+## Important caveats
 
-### Private local communication
-- **No internet required** - Devices talk over the same Wi-Fi, hotspot, or LAN
-- **Owner-approved rooms** - The room owner decides who can join
-- **Local-network boundary enforced** - HTTP and socket traffic are rejected when they come from outside the local network
+- `Offline` here means `no internet required`, not `no network required`.
+- The app is designed for same-network use, but exact reachability still depends on host firewall rules, router or hotspot behavior, and browser security rules.
+- Phone support is much better than before, but real mobile behavior still varies by browser, OS, hotspot policy, and whether the browser requires a secure context.
+- The server still sees operational metadata such as usernames, room membership, timestamps, ciphertext sizes, and connection/IP information.
+- There is no key backup or multi-device key recovery flow yet. If a device loses its local private key material, old encrypted room history tied to that key is not recoverable.
 
-### Encryption and access
-- **End-to-end encryption** - AES-256-GCM + ECDH P-256 key exchange
-- **Encrypted file sharing** - File bytes and file metadata are encrypted before upload and shared inside the room
-- **JWT authentication** - Access tokens (15 min) + refresh tokens (7 days) with rotation
-- **Ephemeral rooms** - When the owner leaves, the room and its data are removed
+## Prerequisites
 
-### Mobile and same-network access
-- **QR Code Joining** - Scan to join rooms instantly
-- **Multiple local join addresses** - If one LAN IP is wrong for a phone or laptop, the room shows fallback local addresses you can copy instead
-- **Optional local HTTPS** - A self-signed HTTPS server can help on phones that require a secure context, but browser/device policies still vary
-- **Mixed Mode** - Supports both Auth-based and Legacy (username-only) users
+- Node.js `18+`
+- npm `9+`
+- Windows PowerShell if you want to use `setup.ps1`
+- OpenSSL only if you want optional local HTTPS certificates for stricter mobile browsers
 
-### 🛠️ Developer Experience
-- **TypeScript** - Full type safety on frontend
-- **Comprehensive Testing** - 95+ Unit (Jest) and E2E (Playwright) tests
-- **Dual Server Modes** - Enhanced (Auth) and Legacy (Simple) servers
+## Quick start
 
----
+### Option A: Windows setup script
 
-## 🚀 Quick Start
+`setup.ps1` is the fastest path on Windows. It installs dependencies, builds the client, and can prepare local HTTPS files for phone testing.
 
-### Option A: One-Click Setup (Recommended) ⚡
-**Right-click `setup.ps1` → "Run with PowerShell" (as Administrator)**
-This automatically installs dependencies, builds the client, generates SSL certs, and starts the server.
+### Option B: Manual setup
 
-### Option B: Manual Setup
-
-#### 1. Install & Build
 ```bash
-npm install         # Install server deps
-npm run install-all # Install client deps
-npm run build       # Build React frontend
+npm install
+npm run install-all
+npm run build
 ```
 
-#### 2. Generate SSL Certificates (Optional, but useful for Mobile)
+Optional local HTTPS:
+
 ```bash
 mkdir ssl
 openssl req -x509 -newkey rsa:2048 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -nodes -subj "/CN=MAJA"
 ```
 
-#### 3. Start Server
+Run the app:
+
 ```bash
-npm start           # Starts enhanced server (Auth + E2E)
-# OR
-npm run start:legacy # Starts legacy server (No Auth, just E2E)
+npm start
 ```
 
-### Access URLs
-| Device | URL |
-|--------|-----|
-| 💻 PC | `http://localhost:3000` |
-| 📱 Phone | `http://YOUR_PC_IP:3000` or `https://YOUR_PC_IP:3443` if your browser requires a secure context |
-
----
-
-## How It Works
-
-1. Connect both devices to the same Wi-Fi, hotspot, or LAN.
-2. Create a room on one device.
-3. Share the room code or QR code with people on that same network.
-4. Approve each join request from the room owner device.
-5. If a phone cannot join with the first QR link, try one of the alternate local addresses shown in the room details.
-
-## What This Does Not Do
-
-- It does **not** work across the public internet.
-- People outside your local network are blocked from reaching the host.
-- `Offline` in this project means **no internet required**, not **no local network at all**.
-- Automated tests prove loopback and browser flows well, but real phone-on-hotspot behavior should still be verified on actual devices.
-
----
-
-## ⚠️ Troubleshooting Mobile Connection
-
-**"Site can't be reached" / "Connection timed out"?**
-
-This is usually caused by **AP Isolation** on your phone's hotspot (blocks laptop from talking to phone).
-
-**✅ The Fix: Use Windows Mobile Hotspot**
-1. **On PC:** Settings → Network & Internet → Mobile hotspot → **Turn ON**
-2. **On Phone:** Connect to the PC's hotspot WiFi
-3. **Scan QR Code:** It will automatically detect the hotspot IP (e.g., `192.168.137.1`)
-4. **Access:** `https://192.168.137.1:3443`
-
----
-
-## 🧪 Testing
-
-We use **Jest** for unit testing and **Playwright** for E2E testing.
+Legacy mode:
 
 ```bash
-# Run Unit Tests (Auth, Crypto, Logic)
-npm test
+npm run start:legacy
+```
 
-# Run End-to-End Tests (Browser automation)
+Default local access:
+- Host machine: `http://localhost:3000`
+- Phone or second laptop: `http://YOUR_LOCAL_IP:3000`
+- If the browser requires a secure context and you generated local certs: `https://YOUR_LOCAL_IP:3443`
+
+## How it works
+
+1. Start the server on one machine.
+2. Connect the other devices to the same Wi-Fi, hotspot, or LAN.
+3. Create a room on the host device.
+4. Share the room code or QR code.
+5. The owner approves each join request.
+6. Clients derive or restore the room key locally and encrypt messages before sending them.
+7. Recipients decrypt locally in the browser.
+
+## Encryption model
+
+- Key exchange: ECDH P-256
+- Message/file encryption: AES-256-GCM
+- Transport: HTTP or HTTPS plus Socket.IO, depending on how the local server is started
+- Server role: relay, persistence, room state, and approval flow
+
+The server should not be able to read plaintext message content or plaintext file contents.
+
+## Testing
+
+This repo includes automated Jest and Playwright coverage for:
+- auth and token flow
+- room creation, join approval, and persistence
+- local-network enforcement helpers
+- encrypted file upload and download flow
+- browser-level messaging and room UX
+
+Useful commands:
+
+```bash
+npm test -- --runInBand
 npm run test:e2e
-
-# Run All Tests
-npm run test:all
+npm run build
 ```
 
-**Coverage:**
-- ✅ **Auth:** Registration, Login, Token Refresh, Rate Limiting
-- ✅ **Rooms:** Creation, Joining, Locking, Persistence
-- ✅ **Security:** Injection, XSS prevention, Error handling
-- ✅ **E2E:** Full user flows (Login → Create Room → Chat → Leave)
+## Troubleshooting mobile joins
 
----
+If a phone cannot open the QR link:
+- make sure both devices are on the same local network
+- try the alternate local addresses shown in the room details panel
+- try the host machine's hotspot instead of the phone's hotspot if AP isolation blocks device-to-device traffic
+- use local HTTPS if the browser blocks Web Crypto or clipboard/network features without a secure context
 
-## 📁 Project Structure
+## Repo docs
 
-```
-e2e-messenger/
-├── server-enhanced.js  # MAIN Server (Express + Socket.IO + Auth)
-├── server-sqlite.js    # Legacy Server (No Auth modules)
-├── backend/
-│   ├── config/         # Environment & Constants
-│   ├── controllers/    # API Logic (Auth, Rooms, Files)
-│   ├── database/       # SQLite Wrapper (db.js)
-│   ├── middleware/     # JWT Auth & Rate Limiting
-│   └── routes/         # Express Routes
-├── client/
-│   ├── src/
-│       ├── crypto/     # encryption.ts (E2E Logic)
-│       ├── pages/      # React Components
-│       └── types/      # TypeScript Definitions
-├── tests/              # Jest Unit Tests
-├── e2e/                # Playwright E2E Tests
-└── ssl/                # Certificates
-```
+- [SECURITY.md](./SECURITY.md): current security notes, threat model, and known limitations
+- [PERFORMANCE.md](./PERFORMANCE.md): performance notes and scaling concerns
+- [ARCHITECTURE.md](./ARCHITECTURE.md): deeper architecture notes from the project build-out
+- [CHALLENGES.md](./CHALLENGES.md): implementation lessons and problem-solving notes from development
 
----
+README and `SECURITY.md` should be treated as the current source of truth for runtime behavior and product claims.
 
-## 🔮 Future Roadmap
-1. **Message Pagination** - Load older messages on scroll
-2. **Read Receipts** - Show who has read messages
-3. **Push Notifications** - Web Push API for mobile
-4. **Connection diagnostics** - Explain why a phone or laptop cannot join
-5. **Desktop App** - Electron wrapper
+## License
 
----
-
-## 📄 License
-MIT License - free to use, modify, and distribute.
-
----
-Built for private, internet-free communication on the same local network.
+MIT

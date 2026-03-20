@@ -1,5 +1,7 @@
 # Technical Challenges & Solutions
 
+> Note: this file captures the build journey and lessons learned. Some code snippets and flow details reflect earlier iterations; `README.md` and `SECURITY.md` describe the current app behavior.
+
 This document captures the real problems I encountered while building this E2E encrypted messenger and how I solved them. These aren't theoretical - they're actual bugs, race conditions, and design decisions I worked through.
 
 ---

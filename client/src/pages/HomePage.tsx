@@ -3,7 +3,13 @@ import BrandGlyph from '../components/BrandGlyph';
 import type { HomePageProps } from '../types';
 import '../styles/landing.css';
 
-function HomePage({ username, onCreateRoom, onJoinRoom, socketConnected }: HomePageProps): JSX.Element {
+function HomePage({
+  username,
+  onCreateRoom,
+  onJoinRoom,
+  socketConnected,
+  creatingRoom,
+}: HomePageProps): JSX.Element {
   const [roomCode, setRoomCode] = useState<string>('');
   const [showJoinForm, setShowJoinForm] = useState<boolean>(false);
 
@@ -55,6 +61,7 @@ function HomePage({ username, onCreateRoom, onJoinRoom, socketConnected }: HomeP
             <button
               className="action-card create-action"
               onClick={onCreateRoom}
+              disabled={creatingRoom}
             >
               <div className="action-icon">
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -62,8 +69,12 @@ function HomePage({ username, onCreateRoom, onJoinRoom, socketConnected }: HomeP
                   <path d="M12 8V16M8 12H16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                 </svg>
               </div>
-              <span className="action-title">Create room</span>
-              <span className="action-desc">Start a private encrypted room and approve who joins.</span>
+              <span className="action-title">{creatingRoom ? 'Creating room...' : 'Create room'}</span>
+              <span className="action-desc">
+                {creatingRoom
+                  ? 'Preparing the room key and waiting for the local host to confirm.'
+                  : 'Start a private encrypted room and approve who joins.'}
+              </span>
             </button>
 
             <button
